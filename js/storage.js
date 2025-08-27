@@ -1,10 +1,11 @@
-// Local Storage Manager for OTP accounts and folders
+// Chrome Extension Storage Manager for OTP accounts and folders
 
 class StorageManager {
     constructor() {
         this.accountsKey = "otp_accounts";
         this.foldersKey = "otp_folders";
         this.settingsKey = "otp_settings";
+        this.isExtension = typeof chrome !== 'undefined' && chrome.storage;
         
         // Initialize default data if not exists
         this.initializeDefaults();
@@ -13,10 +14,11 @@ class StorageManager {
     /**
      * Initialize default folders and settings
      */
-    initializeDefaults() {
-        if (!this.getFolders().length) {
+    async initializeDefaults() {
+        const folders = await this.getFolders();
+        if (!folders.length) {
             // Create default uncategorized folder
-            this.addFolder({
+            await this.addFolder({
                 id: "uncategorized",
                 name: "غير مصنف",
                 parentId: null,
@@ -24,8 +26,9 @@ class StorageManager {
             });
         }
 
-        if (!this.getSettings()) {
-            this.saveSettings({
+        const settings = await this.getSettings();
+        if (!settings) {
+            await this.saveSettings({
                 theme: "light",
                 autoRefresh: true,
                 refreshInterval: 30,
@@ -42,12 +45,17 @@ class StorageManager {
 
     /**
      * Get all accounts
-     * @returns {Array} Array of account objects
+     * @returns {Promise<Array>} Array of account objects
      */
-    getAccounts() {
+    async getAccounts() {
         try {
-            const accounts = localStorage.getItem(this.accountsKey);
-            return accounts ? JSON.parse(accounts) : [];
+            if (this.isExtension) {
+                const result = await chrome.storage.local.get(this.accountsKey);
+                return result[this.accountsKey] || [];
+            } else {
+                const accounts = localStorage.getItem(this.accountsKey);
+                return accounts ? JSON.parse(accounts) : [];
+            }
         } catch (error) {
             console.error("Error reading accounts:", error);
             return [];
@@ -57,11 +65,17 @@ class StorageManager {
     /**
      * Save accounts array to storage
      * @param {Array} accounts - Array of account objects
+     * @returns {Promise<boolean>} Success status
      */
-    saveAccounts(accounts) {
+    async saveAccounts(accounts) {
         try {
-            localStorage.setItem(this.accountsKey, JSON.stringify(accounts));
-            return true;
+            if (this.isExtension) {
+                await chrome.storage.local.set({ [this.accountsKey]: accounts });
+                return true;
+            } else {
+                localStorage.setItem(this.accountsKey, JSON.stringify(accounts));
+                return true;
+            }
         } catch (error) {
             console.error("Error saving accounts:", error);
             return false;
@@ -71,25 +85,26 @@ class StorageManager {
     /**
      * Add new account
      * @param {Object} account - Account object
-     * @returns {string|null} Account ID if successful, null otherwise
+     * @returns {Promise<string|null>} Account ID if successful, null otherwise
      */
-    addAccount(account) {
+    async addAccount(account) {
         try {
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             const newAccount = {
-                id: this.generateId(),
+                id: account.id || this.generateId(),
                 name: account.name,
                 service: account.service,
                 email: account.email,
                 secret: account.secret,
                 folderId: account.folderId || "uncategorized",
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
+                lastUsed: account.lastUsed || null
             };
 
             accounts.push(newAccount);
-            this.saveAccounts(accounts);
-            return newAccount.id;
+            const success = await this.saveAccounts(accounts);
+            return success ? newAccount.id : null;
         } catch (error) {
             console.error("Error adding account:", error);
             return null;
@@ -100,11 +115,11 @@ class StorageManager {
      * Update existing account
      * @param {string} accountId - Account ID
      * @param {Object} updates - Updates to apply
-     * @returns {boolean} Success status
+     * @returns {Promise<boolean>} Success status
      */
-    updateAccount(accountId, updates) {
+    async updateAccount(accountId, updates) {
         try {
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             const index = accounts.findIndex(acc => acc.id === accountId);
             
             if (index === -1) {
@@ -117,7 +132,7 @@ class StorageManager {
                 updatedAt: new Date().toISOString()
             };
 
-            return this.saveAccounts(accounts);
+            return await this.saveAccounts(accounts);
         } catch (error) {
             console.error("Error updating account:", error);
             return false;
@@ -179,12 +194,17 @@ class StorageManager {
 
     /**
      * Get all folders
-     * @returns {Array} Array of folder objects
+     * @returns {Promise<Array>} Array of folder objects
      */
-    getFolders() {
+    async getFolders() {
         try {
-            const folders = localStorage.getItem(this.foldersKey);
-            return folders ? JSON.parse(folders) : [];
+            if (this.isExtension) {
+                const result = await chrome.storage.local.get(this.foldersKey);
+                return result[this.foldersKey] || [];
+            } else {
+                const folders = localStorage.getItem(this.foldersKey);
+                return folders ? JSON.parse(folders) : [];
+            }
         } catch (error) {
             console.error("Error reading folders:", error);
             return [];
@@ -194,11 +214,17 @@ class StorageManager {
     /**
      * Save folders array to storage
      * @param {Array} folders - Array of folder objects
+     * @returns {Promise<boolean>} Success status
      */
-    saveFolders(folders) {
+    async saveFolders(folders) {
         try {
-            localStorage.setItem(this.foldersKey, JSON.stringify(folders));
-            return true;
+            if (this.isExtension) {
+                await chrome.storage.local.set({ [this.foldersKey]: folders });
+                return true;
+            } else {
+                localStorage.setItem(this.foldersKey, JSON.stringify(folders));
+                return true;
+            }
         } catch (error) {
             console.error("Error saving folders:", error);
             return false;
@@ -208,11 +234,11 @@ class StorageManager {
     /**
      * Add new folder
      * @param {Object} folder - Folder object
-     * @returns {string|null} Folder ID if successful, null otherwise
+     * @returns {Promise<string|null>} Folder ID if successful, null otherwise
      */
-    addFolder(folder) {
+    async addFolder(folder) {
         try {
-            const folders = this.getFolders();
+            const folders = await this.getFolders();
             const newFolder = {
                 id: folder.id || this.generateId(),
                 name: folder.name,
@@ -221,8 +247,8 @@ class StorageManager {
             };
 
             folders.push(newFolder);
-            this.saveFolders(folders);
-            return newFolder.id;
+            const success = await this.saveFolders(folders);
+            return success ? newFolder.id : null;
         } catch (error) {
             console.error("Error adding folder:", error);
             return null;
@@ -308,12 +334,17 @@ class StorageManager {
 
     /**
      * Get application settings
-     * @returns {Object|null} Settings object
+     * @returns {Promise<Object|null>} Settings object
      */
-    getSettings() {
+    async getSettings() {
         try {
-            const settings = localStorage.getItem(this.settingsKey);
-            return settings ? JSON.parse(settings) : null;
+            if (this.isExtension) {
+                const result = await chrome.storage.local.get(this.settingsKey);
+                return result[this.settingsKey] || null;
+            } else {
+                const settings = localStorage.getItem(this.settingsKey);
+                return settings ? JSON.parse(settings) : null;
+            }
         } catch (error) {
             console.error("Error reading settings:", error);
             return null;
@@ -323,12 +354,17 @@ class StorageManager {
     /**
      * Save application settings
      * @param {Object} settings - Settings object
-     * @returns {boolean} Success status
+     * @returns {Promise<boolean>} Success status
      */
-    saveSettings(settings) {
+    async saveSettings(settings) {
         try {
-            localStorage.setItem(this.settingsKey, JSON.stringify(settings));
-            return true;
+            if (this.isExtension) {
+                await chrome.storage.local.set({ [this.settingsKey]: settings });
+                return true;
+            } else {
+                localStorage.setItem(this.settingsKey, JSON.stringify(settings));
+                return true;
+            }
         } catch (error) {
             console.error("Error saving settings:", error);
             return false;

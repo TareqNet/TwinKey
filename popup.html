@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=400, initial-scale=1.0">
+    <title>مدير رموز OTP</title>
+    
+    <!-- Bootstrap RTL CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/popup.css">
+</head>
+<body>
+    <!-- Header -->
+    <div class="header bg-primary text-white p-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <h6 class="mb-0">
+                <i class="bi bi-shield-lock me-2"></i>
+                مدير رموز OTP
+            </h6>
+            <div>
+                <button type="button" class="btn btn-outline-light btn-sm me-1" id="addAccountBtn">
+                    <i class="bi bi-plus"></i>
+                </button>
+                <button type="button" class="btn btn-outline-light btn-sm" id="settingsBtn">
+                    <i class="bi bi-gear"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="search-bar p-2 bg-light">
+        <div class="input-group input-group-sm">
+            <span class="input-group-text">
+                <i class="bi bi-search"></i>
+            </span>
+            <input type="text" class="form-control" id="searchInput" placeholder="البحث...">
+        </div>
+    </div>
+
+    <!-- Accounts List -->
+    <div class="accounts-container" id="accountsContainer">
+        <div class="text-center text-muted py-4" id="emptyState">
+            <i class="bi bi-inbox display-6"></i>
+            <p class="mt-2 mb-0">لا توجد حسابات</p>
+            <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn">
+                إضافة حساب
+            </button>
+        </div>
+    </div>
+
+    <!-- Add Account Form -->
+    <div class="add-account-form d-none" id="addAccountForm">
+        <div class="form-header bg-light p-2 border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">إضافة حساب جديد</h6>
+                <button type="button" class="btn btn-sm" id="closeFormBtn">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <form class="p-3" id="accountForm">
+            <div class="mb-2">
+                <label for="accountName" class="form-label form-label-sm">اسم الحساب</label>
+                <input type="text" class="form-control form-control-sm" id="accountName" required>
+            </div>
+            <div class="mb-2">
+                <label for="serviceName" class="form-label form-label-sm">الخدمة</label>
+                <select class="form-select form-select-sm" id="serviceName" required>
+                    <option value="">اختر الخدمة</option>
+                    <option value="Google">Google</option>
+                    <option value="Microsoft">Microsoft</option>
+                    <option value="GitHub">GitHub</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Twitter">Twitter</option>
+                    <option value="Discord">Discord</option>
+                    <option value="Amazon">Amazon</option>
+                    <option value="Other">أخرى</option>
+                </select>
+            </div>
+            <div class="mb-2">
+                <label for="accountEmail" class="form-label form-label-sm">البريد الإلكتروني</label>
+                <input type="email" class="form-control form-control-sm" id="accountEmail" required>
+            </div>
+            <div class="mb-3">
+                <label for="secretKey" class="form-label form-label-sm">المفتاح السري</label>
+                <input type="text" class="form-control form-control-sm" id="secretKey" required>
+                <div class="form-text text-xs">32 حرف Base32</div>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm flex-fill">إضافة</button>
+                <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelFormBtn">إلغاء</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Account Details Modal -->
+    <div class="account-details d-none" id="accountDetails">
+        <div class="details-header bg-light p-2 border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0" id="detailsTitle">تفاصيل الحساب</h6>
+                <button type="button" class="btn btn-sm" id="closeDetailsBtn">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div class="p-3" id="detailsContent">
+            <!-- Account details will be populated here -->
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="toast" class="toast" role="alert">
+            <div class="toast-body">
+                <span id="toastMessage"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JavaScript -->
+    <script src="js/totp.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/popup.js"></script>
+</body>
+</html>
