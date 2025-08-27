@@ -1,4 +1,4 @@
-// UI Controller for OTP Manager Application
+// UI Controller for TwinKey Application
 
 class UIController {
     constructor(storageManager, totpGenerator) {
@@ -11,7 +11,10 @@ class UIController {
         this.countdownInterval = null;
         
         this.initializeEventListeners();
-        this.loadInitialData();
+        // Load data asynchronously
+        this.loadInitialData().catch(error => {
+            console.error("Failed to load initial data:", error);
+        });
     }
 
     /**
@@ -19,27 +22,27 @@ class UIController {
      */
     initializeEventListeners() {
         // Add Account Form
-        document.getElementById("addAccountForm").addEventListener("submit", (e) => {
+        document.getElementById("addAccountForm").addEventListener("submit", async (e) => {
             e.preventDefault();
-            this.handleAddAccount();
+            await this.handleAddAccount();
         });
 
         // Add Folder Form
-        document.getElementById("addFolderForm").addEventListener("submit", (e) => {
+        document.getElementById("addFolderForm").addEventListener("submit", async (e) => {
             e.preventDefault();
-            this.handleAddFolder();
+            await this.handleAddFolder();
         });
 
         // Search Input
-        document.getElementById("searchInput").addEventListener("input", (e) => {
+        document.getElementById("searchInput").addEventListener("input", async (e) => {
             this.searchQuery = e.target.value;
-            this.renderAccounts();
+            await this.renderAccounts();
         });
 
         // Sort Select
-        document.getElementById("sortSelect").addEventListener("change", (e) => {
+        document.getElementById("sortSelect").addEventListener("change", async (e) => {
             this.sortBy = e.target.value;
-            this.renderAccounts();
+            await this.renderAccounts();
         });
 
         // Modal Reset Events
@@ -55,12 +58,16 @@ class UIController {
     /**
      * Load initial data and render UI
      */
-    loadInitialData() {
-        this.renderFolders();
-        this.renderAccounts();
-        this.updateFolderOptions();
-        this.startOTPUpdates();
-        this.updateLastModified();
+    async loadInitialData() {
+        try {
+            await this.renderFolders();
+            await this.renderAccounts();
+            await this.updateFolderOptions();
+            this.startOTPUpdates();
+            await this.updateLastModified();
+        } catch (error) {
+            console.error("Error loading initial data:", error);
+        }
     }
 
     // ===============================
@@ -70,7 +77,7 @@ class UIController {
     /**
      * Handle add account form submission
      */
-    handleAddAccount() {
+    async handleAddAccount() {
         const form = document.getElementById("addAccountForm");
         const formData = new FormData(form);
         
@@ -94,13 +101,13 @@ class UIController {
         }
 
         // Add account
-        const accountId = this.storage.addAccount(account);
+        const accountId = await this.storage.addAccount(account);
         if (accountId) {
             this.showToast("تم إضافة الحساب بنجاح", "success");
             this.resetAccountForm();
             bootstrap.Modal.getInstance(document.getElementById("addAccountModal")).hide();
-            this.renderAccounts();
-            this.renderFolders(); // Update counts
+            await this.renderAccounts();
+            await this.renderFolders(); // Update counts
         } else {
             this.showToast("خطأ في إضافة الحساب", "error");
         }
@@ -133,7 +140,7 @@ class UIController {
         }
 
         // Check for duplicate accounts
-        const existingAccounts = this.storage.getAccounts();
+        const existingAccounts = await this.storage.getAccounts();
         const isDuplicate = existingAccounts.some(acc => 
             acc.email === account.email && acc.service === account.service
         );
@@ -157,15 +164,15 @@ class UIController {
      * Handle account deletion
      * @param {string} accountId - Account ID
      */
-    handleDeleteAccount(accountId) {
-        const account = this.storage.getAccount(accountId);
+    async handleDeleteAccount(accountId) {
+        const account = await this.storage.getAccount(accountId);
         if (!account) return;
 
         if (confirm(`هل أنت متأكد من حذف حساب ${account.name}؟`)) {
-            if (this.storage.deleteAccount(accountId)) {
+            if (await this.storage.deleteAccount(accountId)) {
                 this.showToast("تم حذف الحساب بنجاح", "success");
-                this.renderAccounts();
-                this.renderFolders();
+                await this.renderAccounts();
+                await this.renderFolders();
                 bootstrap.Modal.getInstance(document.getElementById("accountDetailsModal"))?.hide();
             } else {
                 this.showToast("خطأ في حذف الحساب", "error");
@@ -177,8 +184,8 @@ class UIController {
      * Show account details modal
      * @param {string} accountId - Account ID
      */
-    showAccountDetails(accountId) {
-        const account = this.storage.getAccount(accountId);
+    async showAccountDetails(accountId) {
+        const account = await this.storage.getAccount(accountId);
         if (!account) return;
 
         document.getElementById("accountDetailsTitle").textContent = account.name;
@@ -226,7 +233,7 @@ class UIController {
     /**
      * Handle add folder form submission
      */
-    handleAddFolder() {
+    async handleAddFolder() {
         const folderName = document.getElementById("folderName").value.trim();
         
         if (!folderName) {
@@ -235,7 +242,7 @@ class UIController {
         }
 
         // Check for duplicate folder names
-        const existingFolders = this.storage.getFolders();
+        const existingFolders = await this.storage.getFolders();
         const isDuplicate = existingFolders.some(folder => 
             folder.name.toLowerCase() === folderName.toLowerCase()
         );
@@ -245,13 +252,13 @@ class UIController {
             return;
         }
 
-        const folderId = this.storage.addFolder({ name: folderName });
+        const folderId = await this.storage.addFolder({ name: folderName });
         if (folderId) {
             this.showToast("تم إضافة المجلد بنجاح", "success");
             this.resetFolderForm();
             bootstrap.Modal.getInstance(document.getElementById("addFolderModal")).hide();
-            this.renderFolders();
-            this.updateFolderOptions();
+            await this.renderFolders();
+            await this.updateFolderOptions();
         } else {
             this.showToast("خطأ في إضافة المجلد", "error");
         }
@@ -281,7 +288,7 @@ class UIController {
         document.getElementById("currentFolderName").textContent = this.getFolderDisplayName(folderId);
         
         // Re-render accounts for selected folder
-        this.renderAccounts();
+        await this.renderAccounts();
     }
 
     /**
@@ -313,10 +320,10 @@ class UIController {
     /**
      * Render folders in sidebar
      */
-    renderFolders() {
+    async renderFolders() {
         const container = document.getElementById("foldersContainer").querySelector(".list-group");
-        const folders = this.storage.getFolders();
-        const accounts = this.storage.getAccounts();
+        const folders = await this.storage.getFolders();
+        const accounts = await this.storage.getAccounts();
         
         // Count accounts per folder
         const folderCounts = {};
@@ -359,40 +366,48 @@ class UIController {
     /**
      * Render accounts based on current filter and search
      */
-    renderAccounts() {
+    async renderAccounts() {
         const container = document.getElementById("accountsContainer");
         const emptyState = document.getElementById("emptyState");
         
-        // Get accounts for current folder
-        let accounts = this.storage.getAccountsByFolder(this.currentFolderId);
-        
-        // Apply search filter
-        if (this.searchQuery) {
-            accounts = this.storage.searchAccounts(this.searchQuery);
-            if (this.currentFolderId !== "all") {
-                accounts = accounts.filter(acc => acc.folderId === this.currentFolderId);
+        try {
+            // Get accounts for current folder
+            let accounts = await this.storage.getAccountsByFolder(this.currentFolderId);
+            
+            // Apply search filter
+            if (this.searchQuery) {
+                accounts = await this.storage.searchAccounts(this.searchQuery);
+                if (this.currentFolderId !== "all") {
+                    accounts = accounts.filter(acc => acc.folderId === this.currentFolderId);
+                }
             }
-        }
-        
-        // Sort accounts
-        accounts = this.storage.sortAccounts(accounts, this.sortBy);
-        
-        if (accounts.length === 0) {
+            
+            // Sort accounts
+            accounts = await this.storage.sortAccounts(accounts, this.sortBy);
+            
+            if (accounts.length === 0) {
+                emptyState.style.display = "block";
+                container.querySelectorAll(".account-card").forEach(card => card.remove());
+                return;
+            }
+            
+            emptyState.style.display = "none";
+            
+            // Clear existing account cards
+            container.querySelectorAll(".account-card").forEach(card => card.remove());
+            
+            // Render each account
+            for (const account of accounts) {
+                const accountCard = await this.createAccountCard(account);
+                container.appendChild(accountCard);
+            }
+            
+        } catch (error) {
+            console.error("Error rendering accounts:", error);
+            // Show empty state on error
             emptyState.style.display = "block";
             container.querySelectorAll(".account-card").forEach(card => card.remove());
-            return;
         }
-        
-        emptyState.style.display = "none";
-        
-        // Clear existing account cards
-        container.querySelectorAll(".account-card").forEach(card => card.remove());
-        
-        // Render each account
-        accounts.forEach(account => {
-            const accountCard = this.createAccountCard(account);
-            container.appendChild(accountCard);
-        });
     }
 
     /**
@@ -400,12 +415,12 @@ class UIController {
      * @param {Object} account - Account data
      * @returns {HTMLElement} Account card element
      */
-    createAccountCard(account) {
+    async createAccountCard(account) {
         const card = document.createElement("div");
         card.className = "card account-card fade-in";
-        card.onclick = () => this.showAccountDetails(account.id);
+        card.onclick = async () => await this.showAccountDetails(account.id);
         
-        const otpCode = this.totp.generate(account.secret);
+        const otpCode = await this.totp.generate(account.secret);
         const remainingSeconds = this.totp.getRemainingSeconds();
         const progress = this.totp.getProgress();
         
@@ -442,9 +457,9 @@ class UIController {
     /**
      * Update folder options in forms
      */
-    updateFolderOptions() {
+    async updateFolderOptions() {
         const select = document.getElementById("folderSelect");
-        const folders = this.storage.getFolders();
+        const folders = await this.storage.getFolders();
         
         // Clear existing options except default
         const defaultOption = select.querySelector('option[value="uncategorized"]');
@@ -483,7 +498,7 @@ class UIController {
     updateOTPCodes() {
         document.querySelectorAll(".otp-code[data-account-id]").forEach(codeElement => {
             const accountId = codeElement.dataset.accountId;
-            const account = this.storage.getAccount(accountId);
+            const account = await this.storage.getAccount(accountId);
             
             if (account) {
                 const newCode = this.totp.generate(account.secret);
@@ -519,9 +534,9 @@ class UIController {
     /**
      * Update last modified time
      */
-    updateLastModified() {
+    async updateLastModified() {
         const lastUpdate = document.getElementById("lastUpdate");
-        const stats = this.storage.getStorageStats();
+        const stats = await this.storage.getStorageStats();
         
         if (stats.lastModified) {
             const date = new Date(stats.lastModified);

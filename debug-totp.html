@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TOTP Debug</title>
+</head>
+<body>
+    <h1>TOTP Debug Tool</h1>
+    
+    <div>
+        <label>Secret Key:</label>
+        <input type="text" id="secretInput" placeholder="Enter Base32 secret" style="width: 300px;">
+        <button onclick="testTOTP()">Test TOTP</button>
+    </div>
+    
+    <div id="results" style="margin-top: 20px; font-family: monospace;"></div>
+    
+    <script src="js/totp.js"></script>
+    <script>
+        function testTOTP() {
+            const secret = document.getElementById('secretInput').value.trim().toUpperCase();
+            if (!secret) {
+                alert('Please enter a secret key');
+                return;
+            }
+            
+            const generator = new TOTPGenerator();
+            const now = Math.floor(Date.now() / 1000);
+            
+            // Test with current time and a few time steps
+            const results = [];
+            
+            for (let i = -2; i <= 2; i++) {
+                const testTime = now + (i * 30);
+                const code = generator.generate(secret, testTime);
+                const timeCounter = Math.floor(testTime / 30);
+                const date = new Date(testTime * 1000);
+                
+                results.push({
+                    offset: i,
+                    time: testTime,
+                    timeCounter,
+                    date: date.toLocaleString(),
+                    code
+                });
+            }
+            
+            // Current time details
+            const currentCode = generator.generate(secret);
+            const timeLeft = generator.getRemainingSeconds();
+            
+            let html = `
+                <h3>Current TOTP Code</h3>
+                <div style="font-size: 24px; color: blue; margin: 10px 0;">
+                    ${currentCode}
+                </div>
+                <div>Time remaining: ${timeLeft} seconds</div>
+                <div>Unix timestamp: ${now}</div>
+                <div>Time counter (T): ${Math.floor(now / 30)}</div>
+                
+                <h3>TOTP Codes for Different Time Windows</h3>
+                <table border="1" style="border-collapse: collapse; margin-top: 10px;">
+                    <tr>
+                        <th>Offset</th>
+                        <th>Time</th>
+                        <th>Time Counter (T)</th>
+                        <th>Date/Time</th>
+                        <th>TOTP Code</th>
+                    </tr>
+            `;
+            
+            results.forEach(r => {
+                const isCurrent = r.offset === 0;
+                html += `
+                    <tr style="${isCurrent ? 'background-color: yellow;' : ''}">
+                        <td>${r.offset}</td>
+                        <td>${r.time}</td>
+                        <td>${r.timeCounter}</td>
+                        <td>${r.date}</td>
+                        <td><strong>${r.code}</strong></td>
+                    </tr>
+                `;
+            });
+            
+            html += `
+                </table>
+                
+                <h3>Debug Information</h3>
+                <div>Secret (cleaned): ${secret}</div>
+                <div>Secret length: ${secret.length}</div>
+                <div>Base32 validation: ${generator.validateSecret(secret) ? 'Valid' : 'Invalid'}</div>
+            `;
+            
+            // Test with known test vectors
+            html += `
+                <h3>RFC Test Vector Validation</h3>
+            `;
+            
+            // Known test cases from RFC 6238
+            const testCases = [
+                { secret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', time: 1111111109, expected: '081804' },
+                { secret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', time: 1234567890, expected: '005924' },
+                { secret: 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', time: 2000000000, expected: '279037' }
+            ];
+            
+            testCases.forEach(test => {
+                const result = generator.generate(test.secret, test.time);
+                const match = result === test.expected;
+                html += `
+                    <div style="color: ${match ? 'green' : 'red'};">
+                        Time: ${test.time} | Expected: ${test.expected} | Got: ${result} ${match ? '✓' : '✗'}
+                    </div>
+                `;
+            });
+            
+            document.getElementById('results').innerHTML = html;
+        }
+        
+        // Auto-test with a sample secret
+        document.getElementById('secretInput').value = 'JBSWY3DPEHPK3PXP'; // "Hello" in Base32
+        
+        // Update every second to show real-time changes
+        setInterval(() => {
+            const input = document.getElementById('secretInput').value;
+            if (input) {
+                testTOTP();
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

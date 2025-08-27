@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=400, initial-scale=1.0">
-    <title>مدير رموز OTP</title>
+    <meta name="viewport" content="width=600, initial-scale=1.0">
+    <title data-i18n="extension_title">Twin Key - Chrome Extension</title>
     
-    <!-- Bootstrap RTL CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <!-- Custom CSS -->
@@ -18,7 +18,7 @@
         <div class="d-flex justify-content-between align-items-center">
             <h6 class="mb-0">
                 <i class="bi bi-shield-lock me-2"></i>
-                مدير رموز OTP
+                <span data-i18n="app_title">Twin Key</span>
             </h6>
             <div>
                 <button type="button" class="btn btn-outline-light btn-sm me-1" id="addAccountBtn">
@@ -37,7 +37,7 @@
             <span class="input-group-text">
                 <i class="bi bi-search"></i>
             </span>
-            <input type="text" class="form-control" id="searchInput" placeholder="البحث...">
+            <input type="text" class="form-control" id="searchInput" data-i18n="search_placeholder" placeholder="Search...">
         </div>
     </div>
 
@@ -45,9 +45,9 @@
     <div class="accounts-container" id="accountsContainer">
         <div class="text-center text-muted py-4" id="emptyState">
             <i class="bi bi-inbox display-6"></i>
-            <p class="mt-2 mb-0">لا توجد حسابات</p>
-            <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn">
-                إضافة حساب
+            <p class="mt-2 mb-0" data-i18n="no_accounts">No accounts</p>
+            <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn" data-i18n="add_account">
+                Add Account
             </button>
         </div>
     </div>
@@ -56,7 +56,7 @@
     <div class="add-account-form d-none" id="addAccountForm">
         <div class="form-header bg-light p-2 border-bottom">
             <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0">إضافة حساب جديد</h6>
+                <h6 class="mb-0" data-i18n="add_account">Add Account</h6>
                 <button type="button" class="btn btn-sm" id="closeFormBtn">
                     <i class="bi bi-x-lg"></i>
                 </button>
@@ -64,13 +64,13 @@
         </div>
         <form class="p-3" id="accountForm">
             <div class="mb-2">
-                <label for="accountName" class="form-label form-label-sm">اسم الحساب</label>
+                <label for="accountName" class="form-label form-label-sm" data-i18n="account_name">Account Name</label>
                 <input type="text" class="form-control form-control-sm" id="accountName" required>
             </div>
             <div class="mb-2">
-                <label for="serviceName" class="form-label form-label-sm">الخدمة</label>
+                <label for="serviceName" class="form-label form-label-sm" data-i18n="service_type">Service Type</label>
                 <select class="form-select form-select-sm" id="serviceName" required>
-                    <option value="">اختر الخدمة</option>
+                    <option value="" data-i18n="choose_service">Choose Service</option>
                     <option value="Google">Google</option>
                     <option value="Microsoft">Microsoft</option>
                     <option value="GitHub">GitHub</option>
@@ -82,17 +82,17 @@
                 </select>
             </div>
             <div class="mb-2">
-                <label for="accountEmail" class="form-label form-label-sm">البريد الإلكتروني</label>
+                <label for="accountEmail" class="form-label form-label-sm" data-i18n="email">Email</label>
                 <input type="email" class="form-control form-control-sm" id="accountEmail" required>
             </div>
             <div class="mb-3">
-                <label for="secretKey" class="form-label form-label-sm">المفتاح السري</label>
+                <label for="secretKey" class="form-label form-label-sm" data-i18n="secret_key">Secret Key</label>
                 <input type="text" class="form-control form-control-sm" id="secretKey" required>
-                <div class="form-text text-xs">32 حرف Base32</div>
+                <div class="form-text text-xs" data-i18n="secret_key_help">32-character Base32</div>
             </div>
             <div class="d-flex gap-2">
-                <button type="submit" class="btn btn-primary btn-sm flex-fill">إضافة</button>
-                <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelFormBtn">إلغاء</button>
+                <button type="submit" class="btn btn-primary btn-sm flex-fill" data-i18n="add">Add</button>
+                <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelFormBtn" data-i18n="cancel">Cancel</button>
             </div>
         </form>
     </div>
@@ -101,7 +101,7 @@
     <div class="account-details d-none" id="accountDetails">
         <div class="details-header bg-light p-2 border-bottom">
             <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0" id="detailsTitle">تفاصيل الحساب</h6>
+                <h6 class="mb-0" id="detailsTitle" data-i18n="account_details">Account Details</h6>
                 <button type="button" class="btn btn-sm" id="closeDetailsBtn">
                     <i class="bi bi-x-lg"></i>
                 </button>
@@ -121,10 +121,9 @@
         </div>
     </div>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
     <!-- Custom JavaScript -->
+    <script src="js/bootstrap-minimal.js"></script>
+    <script src="js/i18n.js"></script>
     <script src="js/totp.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/popup.js"></script>

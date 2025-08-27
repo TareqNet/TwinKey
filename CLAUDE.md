@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an OTP (One-Time Password) manager available both as a web application and Chrome browser extension. It provides a complete TOTP authentication system with folder organization, search capabilities, and a responsive Arabic interface.
+This is a multilingual OTP (One-Time Password) manager available both as a web application and Chrome browser extension. It provides a complete TOTP authentication system with folder organization, search capabilities, and supports multiple languages with full RTL support for Arabic.
 
 ## Development Commands
 
@@ -40,14 +40,17 @@ To test the Chrome extension:
 - Modular JavaScript architecture with separation of concerns
 
 **Core Components:**
-1. **TOTPGenerator** (`js/totp.js`): RFC 6238 compliant TOTP implementation with Base32 decoding and SHA-1 HMAC
-2. **StorageManager** (`js/storage.js`): Unified storage abstraction supporting both localStorage and chrome.storage APIs
-3. **UIController** (`js/ui.js`): DOM manipulation for web application (full interface)
-4. **PopupManager** (`js/popup.js`): Compact popup interface for Chrome extension
-5. **OTPManager** (`js/app.js`): Main web application controller
-6. **Background Script** (`background.js`): Chrome extension service worker
+1. **I18nManager** (`js/i18n.js`): Internationalization system with RTL support and dynamic language switching
+2. **TOTPGenerator** (`js/totp.js`): RFC 6238 compliant TOTP implementation with Base32 decoding and SHA-1 HMAC
+3. **StorageManager** (`js/storage.js`): Unified storage abstraction supporting both localStorage and chrome.storage APIs
+4. **UIController** (`js/ui.js`): DOM manipulation for web application (full interface)
+5. **PopupManager** (`js/popup.js`): Compact popup interface for Chrome extension
+6. **OTPManager** (`js/app.js`): Main web application controller
+7. **Background Script** (`background.js`): Chrome extension service worker
 
 **Key Features:**
+- **Multi-language support**: English and Arabic with RTL layout
+- **Dynamic language switching**: Toggle between languages with UI updates
 - Add/edit/delete OTP accounts with service categorization
 - Folder-based organization system  
 - Real-time search and filtering
@@ -70,18 +73,24 @@ otp-ui/
 │   ├── styles.css         # Main application styles
 │   └── popup.css          # Extension popup styles
 ├── js/
+│   ├── i18n.js           # Internationalization manager
 │   ├── totp.js           # TOTP algorithm implementation
 │   ├── storage.js        # Unified storage (localStorage + chrome.storage)
 │   ├── ui.js             # Web application UI controller
 │   ├── popup.js          # Extension popup controller
 │   └── app.js            # Main web application entry point
+├── locales/
+│   ├── en.json           # English translations
+│   └── ar.json           # Arabic translations
 ├── icons/
 │   ├── icon16.png        # Extension toolbar icon
 │   ├── icon48.png        # Extension management icon
 │   └── icon128.png       # Chrome Web Store icon
 └── docs/
-    ├── FEATURE_TEMPLATE.md # Documentation template
-    └── history/            # Historical documentation
+    ├── FEATURE_TEMPLATE.md     # Documentation template
+    ├── INTERNATIONALIZATION.md # i18n implementation guide
+    ├── EXTENSION_INSTALLATION.md # Chrome extension setup
+    └── history/                # Historical documentation
 ```
 
 ## Development Workflow

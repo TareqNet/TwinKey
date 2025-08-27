@@ -1,6 +1,7 @@
 class PopupManager {
     constructor() {
         this.storageManager = new StorageManager();
+        this.totpGenerator = null;
         this.otpUpdater = null;
         this.accounts = [];
         this.filteredAccounts = [];
@@ -9,10 +10,26 @@ class PopupManager {
     }
 
     async init() {
+        // Wait for DOM to be ready
+        if (document.readyState === 'loading') {
+            await new Promise(resolve => {
+                document.addEventListener('DOMContentLoaded', resolve);
+            });
+        }
+        
+        // Wait for i18n to initialize
+        if (window.i18n) {
+            await window.i18n.init();
+        }
+        
+        // Initialize TOTP generator
+        this.totpGenerator = new TOTPGenerator();
+        
         await this.loadAccounts();
         this.setupEventListeners();
-        this.renderAccounts();
+        await this.renderAccounts();
         this.startOTPUpdater();
+        this.setupLanguageSelector();
     }
 
     async loadAccounts() {
@@ -51,18 +68,23 @@ class PopupManager {
         });
 
         // Search functionality
-        document.getElementById("searchInput").addEventListener("input", (e) => {
-            this.handleSearch(e.target.value);
+        document.getElementById("searchInput").addEventListener("input", async (e) => {
+            await this.handleSearch(e.target.value);
         });
 
-        // Settings button
+        // Settings button - show settings in popup
         document.getElementById("settingsBtn").addEventListener("click", () => {
-            chrome.tabs.create({ url: "index.html" });
+            this.showSettings();
         });
 
         // Close details button
         document.getElementById("closeDetailsBtn").addEventListener("click", () => {
             this.hideAccountDetails();
+        });
+
+        // Language change listener
+        document.addEventListener('languageChanged', async () => {
+            await this.renderAccounts(); // Re-render to apply translations
         });
     }
 
@@ -86,13 +108,13 @@ class PopupManager {
 
         // Validate form data
         if (!formData.name || !formData.service || !formData.email || !formData.secret) {
-            this.showToast("يرجى ملء جميع الحقول", "error");
+            this.showToast(window.i18n ? window.i18n.t('error_fill_fields') : 'Please fill all fields', "error");
             return;
         }
 
         // Validate secret key format (Base32)
         if (!/^[A-Z2-7]+$/.test(formData.secret) || formData.secret.length < 16) {
-            this.showToast("المفتاح السري غير صحيح", "error");
+            this.showToast(window.i18n ? window.i18n.t('error_invalid_secret') : 'Invalid secret key', "error");
             return;
         }
 
@@ -110,19 +132,19 @@ class PopupManager {
             if (success) {
                 this.accounts.push(account);
                 this.filteredAccounts = [...this.accounts];
-                this.renderAccounts();
+                await this.renderAccounts();
                 this.hideAddForm();
-                this.showToast("تم إضافة الحساب بنجاح", "success");
+                this.showToast(window.i18n ? window.i18n.t('success_account_added') : 'Account added successfully', "success");
             } else {
-                this.showToast("فشل في إضافة الحساب", "error");
+                this.showToast(window.i18n ? window.i18n.t('error_adding_account') : 'Failed to add account', "error");
             }
         } catch (error) {
             console.error("Error adding account:", error);
-            this.showToast("حدث خطأ في إضافة الحساب", "error");
+            this.showToast(window.i18n ? window.i18n.t('error_adding_account') : 'Error adding account', "error");
         }
     }
 
-    handleSearch(query) {
+    async handleSearch(query) {
         if (!query.trim()) {
             this.filteredAccounts = [...this.accounts];
         } else {
@@ -133,57 +155,116 @@ class PopupManager {
                 account.email.toLowerCase().includes(searchTerm)
             );
         }
-        this.renderAccounts();
+        await this.renderAccounts();
     }
 
-    renderAccounts() {
+    async renderAccounts() {
         const container = document.getElementById("accountsContainer");
         const emptyState = document.getElementById("emptyState");
 
+        // Safety check
+        if (!container) {
+            console.error("accountsContainer not found");
+            return;
+        }
+
         if (this.filteredAccounts.length === 0) {
             if (this.accounts.length === 0) {
-                emptyState.innerHTML = `
-                    <i class="bi bi-inbox display-6"></i>
-                    <p class="mt-2 mb-0">لا توجد حسابات</p>
-                    <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn">
-                        إضافة حساب
-                    </button>
-                `;
-                document.getElementById("addFirstAccountBtn").addEventListener("click", () => {
-                    this.showAddForm();
-                });
+                const noAccountsText = window.i18n ? window.i18n.t('no_accounts') : 'No accounts';
+                const addAccountText = window.i18n ? window.i18n.t('add_account') : 'Add Account';
+                
+                // Create or update empty state
+                if (emptyState) {
+                    emptyState.innerHTML = `
+                        <i class="bi bi-inbox display-6"></i>
+                        <p class="mt-2 mb-0">${noAccountsText}</p>
+                        <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn">
+                            ${addAccountText}
+                        </button>
+                    `;
+                    emptyState.classList.remove("d-none");
+                    
+                    // Add event listener with timeout to ensure DOM is ready
+                    setTimeout(() => {
+                        const btn = document.getElementById("addFirstAccountBtn");
+                        if (btn) {
+                            btn.addEventListener("click", () => {
+                                this.showAddForm();
+                            });
+                        }
+                    }, 0);
+                } else {
+                    // Create empty state if it doesn't exist
+                    container.innerHTML = `
+                        <div class="text-center text-muted py-4" id="emptyState">
+                            <i class="bi bi-inbox display-6"></i>
+                            <p class="mt-2 mb-0">${noAccountsText}</p>
+                            <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn">
+                                ${addAccountText}
+                            </button>
+                        </div>
+                    `;
+                    
+                    setTimeout(() => {
+                        const btn = document.getElementById("addFirstAccountBtn");
+                        if (btn) {
+                            btn.addEventListener("click", () => {
+                                this.showAddForm();
+                            });
+                        }
+                    }, 0);
+                }
             } else {
-                emptyState.innerHTML = `
-                    <i class="bi bi-search display-6"></i>
-                    <p class="mt-2 mb-0">لا توجد نتائج للبحث</p>
-                `;
+                const noResultsText = window.i18n ? window.i18n.t('no_search_results') : 'No search results';
+                if (emptyState) {
+                    emptyState.innerHTML = `
+                        <i class="bi bi-search display-6"></i>
+                        <p class="mt-2 mb-0">${noResultsText}</p>
+                    `;
+                    emptyState.classList.remove("d-none");
+                } else {
+                    container.innerHTML = `
+                        <div class="text-center text-muted py-4" id="emptyState">
+                            <i class="bi bi-search display-6"></i>
+                            <p class="mt-2 mb-0">${noResultsText}</p>
+                        </div>
+                    `;
+                }
             }
-            emptyState.classList.remove("d-none");
-            container.innerHTML = "";
         } else {
-            emptyState.classList.add("d-none");
-            container.innerHTML = this.filteredAccounts.map(account => this.renderAccountCard(account)).join("");
+            // Hide empty state and show accounts
+            if (emptyState) {
+                emptyState.classList.add("d-none");
+            }
+            
+            // Clear container and add account cards
+            const accountCards = await Promise.all(
+                this.filteredAccounts.map(account => this.renderAccountCard(account))
+            );
+            container.innerHTML = accountCards.join("");
             
             // Add event listeners to account cards
-            this.filteredAccounts.forEach(account => {
-                const card = document.querySelector(`[data-account-id="${account.id}"]`);
-                if (card) {
-                    card.addEventListener("click", () => this.showAccountDetails(account));
-                    
-                    const copyBtn = card.querySelector(".copy-btn");
-                    if (copyBtn) {
-                        copyBtn.addEventListener("click", (e) => {
-                            e.stopPropagation();
-                            this.copyOTP(account);
-                        });
+            setTimeout(() => {
+                this.filteredAccounts.forEach(account => {
+                    const card = document.querySelector(`[data-account-id="${account.id}"]`);
+                    if (card) {
+                        card.addEventListener("click", async () => await this.showAccountDetails(account));
+                        
+                        const copyBtn = card.querySelector(".copy-btn");
+                        if (copyBtn) {
+                            copyBtn.addEventListener("click", async (e) => {
+                                e.stopPropagation();
+                                await this.copyOTP(account);
+                            });
+                        }
                     }
-                }
-            });
+                });
+            }, 0);
         }
     }
 
-    renderAccountCard(account) {
-        const otp = this.generateOTP(account.secret);
+    async renderAccountCard(account) {
+        const otp = await this.generateOTP(account.secret);
         const timeLeft = this.getTimeLeft();
         const timerClass = timeLeft <= 10 ? "danger" : timeLeft <= 20 ? "warning" : "";
 
@@ -205,9 +286,28 @@ class PopupManager {
         `;
     }
 
-    generateOTP(secret) {
+    async generateOTP(secret) {
         try {
-            return window.TOTPGenerator.generate(secret);
+            if (this.totpGenerator) {
+                const result = this.totpGenerator.generate(secret);
+                // Handle both sync and async results
+                if (result instanceof Promise) {
+                    return await result;
+                } else {
+                    return result;
+                }
+            } else if (window.TOTPGenerator) {
+                // Fallback to static usage
+                const generator = new window.TOTPGenerator();
+                const result = generator.generate(secret);
+                if (result instanceof Promise) {
+                    return await result;
+                } else {
+                    return result;
+                }
+            } else {
+                throw new Error("TOTP Generator not available");
+            }
         } catch (error) {
             console.error("Error generating OTP:", error);
             return "------";
@@ -234,7 +334,7 @@ class PopupManager {
         }, 1000);
     }
 
-    updateOTPCodes() {
+    async updateOTPCodes() {
         const otpElements = document.querySelectorAll(".otp-code");
         const timerElements = document.querySelectorAll(".otp-timer");
         const timeLeft = this.getTimeLeft();
@@ -247,26 +347,29 @@ class PopupManager {
 
         // Regenerate OTP codes when timer reaches 0
         if (timeLeft === 30) {
-            otpElements.forEach((element, index) => {
+            const updates = Array.from(otpElements).map(async (element) => {
                 const accountCard = element.closest(".account-card");
                 const accountId = accountCard.getAttribute("data-account-id");
                 const account = this.accounts.find(acc => acc.id === accountId);
                 
                 if (account) {
-                    const newOTP = this.generateOTP(account.secret);
+                    const newOTP = await this.generateOTP(account.secret);
                     element.textContent = this.formatOTP(newOTP);
                     element.setAttribute("data-otp", newOTP);
                 }
             });
+            
+            await Promise.all(updates);
         }
     }
 
     async copyOTP(account) {
-        const otp = this.generateOTP(account.secret);
+        const otp = await this.generateOTP(account.secret);
         
         try {
             await navigator.clipboard.writeText(otp);
-            this.showToast(`تم نسخ كود ${account.name}`, "success");
+            const successMsg = window.i18n ? window.i18n.t('success_account_copied', { name: account.name }) : `OTP code copied for ${account.name}`;
+            this.showToast(successMsg, "success");
             
             // Update last used
             account.lastUsed = new Date().toISOString();
@@ -280,35 +383,40 @@ class PopupManager {
             }
         } catch (error) {
             console.error("Error copying OTP:", error);
-            this.showToast("فشل في نسخ الكود", "error");
+            this.showToast(window.i18n ? window.i18n.t('error_copying_code') : 'Failed to copy code', "error");
         }
     }
 
-    showAccountDetails(account) {
+    async showAccountDetails(account) {
         const detailsContent = document.getElementById("detailsContent");
         const detailsTitle = document.getElementById("detailsTitle");
         
         detailsTitle.textContent = account.name;
         
-        const otp = this.generateOTP(account.secret);
+        const otp = await this.generateOTP(account.secret);
         const lastUsed = account.lastUsed 
-            ? new Date(account.lastUsed).toLocaleDateString("ar-SA")
-            : "لم يستخدم بعد";
+            ? (window.i18n ? window.i18n.formatDate(account.lastUsed) : new Date(account.lastUsed).toLocaleDateString())
+            : (window.i18n ? window.i18n.t('never_used') : 'Never used');
+        
+        const serviceLabel = window.i18n ? window.i18n.t('service') : 'Service';
+        const emailLabel = window.i18n ? window.i18n.t('email') : 'Email';
+        const lastUsedLabel = window.i18n ? window.i18n.t('last_used') : 'Last Used';
+        const copyText = window.i18n ? window.i18n.t('copy') : 'Copy';
         
         detailsContent.innerHTML = `
             <div class="mb-3">
-                <strong>الخدمة:</strong> ${account.service}
+                <strong>${serviceLabel}:</strong> ${account.service}
             </div>
             <div class="mb-3">
-                <strong>البريد الإلكتروني:</strong> ${account.email}
+                <strong>${emailLabel}:</strong> ${account.email}
             </div>
             <div class="mb-3">
-                <strong>آخر استخدام:</strong> ${lastUsed}
+                <strong>${lastUsedLabel}:</strong> ${lastUsed}
             </div>
             <div class="otp-section mb-3">
                 <div class="otp-code">${this.formatOTP(otp)}</div>
                 <button class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText('${otp}')">
-                    <i class="bi bi-copy"></i> نسخ
+                    <i class="bi bi-copy"></i> ${copyText}
                 </button>
             </div>
         `;
@@ -332,8 +440,42 @@ class PopupManager {
         }, 3000);
     }
 
+    setupLanguageSelector() {
+        // Add language selector to header if not exists
+        const header = document.querySelector('.header .d-flex > div');
+        const addAccountBtn = document.getElementById('addAccountBtn');
+        
+        if (header && addAccountBtn && !document.getElementById('languageSelector')) {
+            const langBtn = document.createElement('button');
+            langBtn.id = 'languageSelector';
+            langBtn.className = 'btn btn-outline-light btn-sm me-1';
+            langBtn.innerHTML = '<i class="bi bi-translate"></i>';
+            langBtn.title = window.i18n ? window.i18n.t('language') : 'Language';
+            
+            langBtn.addEventListener('click', () => {
+                this.toggleLanguage();
+            });
+            
+            // Insert as first child instead of before addAccountBtn
+            header.insertBefore(langBtn, header.firstChild);
+        }
+    }
+
+    async toggleLanguage() {
+        if (window.i18n) {
+            const currentLang = window.i18n.getCurrentLanguage();
+            const newLang = currentLang === 'ar' ? 'en' : 'ar';
+            await window.i18n.setLanguage(newLang);
+        }
+    }
+
     generateId() {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
+    }
+
+    showSettings() {
+        // Simple settings display - could be enhanced with modal
+        alert("Settings feature will be added in future updates!");
     }
 }
 

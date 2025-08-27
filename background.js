@@ -1,9 +1,9 @@
-// Background Service Worker for OTP Manager Chrome Extension
+// Background Service Worker for TwinKey Chrome Extension
 
 // Extension installation handler
 chrome.runtime.onInstalled.addListener((details) => {
     if (details.reason === 'install') {
-        console.log('OTP Manager extension installed');
+        console.log('TwinKey extension installed');
         
         // Set default settings on first install
         chrome.storage.local.set({
@@ -33,38 +33,29 @@ chrome.runtime.onInstalled.addListener((details) => {
         });
         
         // Open welcome page
-        chrome.tabs.create({
-            url: chrome.runtime.getURL('index.html')
-        });
+        // Open popup instead of full page
+        chrome.action.openPopup();
     }
 });
 
-// Context menu setup (optional - for right-click functionality)
+// Context menu setup
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.create({
-        id: 'openOTPManager',
-        title: 'فتح مدير OTP',
-        contexts: ['all']
-    });
-    
-    chrome.contextMenus.create({
-        id: 'copyCurrentOTP',
-        title: 'نسخ كود OTP الحالي',
-        contexts: ['all']
-    });
+    try {
+        chrome.contextMenus.create({
+            id: 'openTwinKey',
+            title: 'Open Twin Key',
+            contexts: ['page']
+        });
+    } catch (error) {
+        console.log('Context menu creation failed:', error);
+    }
 });
 
 // Context menu click handler
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId === 'openOTPManager') {
+    if (info.menuItemId === 'openTwinKey') {
+        // Open popup instead of full page
         chrome.action.openPopup();
-    } else if (info.menuItemId === 'copyCurrentOTP') {
-        // Get the most recently used account and copy its OTP
-        getMostRecentAccount().then(account => {
-            if (account) {
-                copyAccountOTP(account);
-            }
-        });
     }
 });
 
@@ -72,7 +63,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.action.onClicked.addListener((tab) => {
     // This will automatically open the popup due to manifest configuration
     // But we can add additional logic here if needed
-    console.log('OTP Manager popup opened');
+    console.log('TwinKey popup opened');
 });
 
 // Handle messages from popup or content scripts
@@ -91,7 +82,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             return true;
             
         case 'updateBadge':
-            updateBadgeCount(request.count);
+            // Badge removed - do nothing
             break;
             
         case 'openFullApp':
@@ -107,13 +98,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // Storage change listener
 chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local') {
-        // Update badge when accounts change
-        if (changes.otp_accounts) {
-            const accountCount = changes.otp_accounts.newValue ? changes.otp_accounts.newValue.length : 0;
-            updateBadgeCount(accountCount);
-        }
-    }
+    // Badge removed - no longer needed
 });
 
 // Utility functions
@@ -138,20 +123,6 @@ async function getMostRecentAccount() {
     }
 }
 
-async function copyAccountOTP(account) {
-    try {
-        // Note: This would require implementing TOTP generation in background
-        // For now, we'll just show a notification
-        chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'icons/icon48.png',
-            title: 'OTP Manager',
-            message: `لنسخ كود ${account.name}، افتح النافذة المنبثقة`
-        });
-    } catch (error) {
-        console.error('Error copying OTP:', error);
-    }
-}
 
 async function saveAccountToStorage(account) {
     try {
@@ -175,27 +146,9 @@ async function saveAccountToStorage(account) {
 }
 
 function updateBadgeCount(count) {
-    const badgeText = count > 0 ? count.toString() : '';
-    chrome.action.setBadgeText({ text: badgeText });
-    chrome.action.setBadgeBackgroundColor({ color: '#007bff' });
+    // Remove badge text completely
+    chrome.action.setBadgeText({ text: '' });
 }
 
-// Initialize badge count on startup
-chrome.storage.local.get('otp_accounts', (result) => {
-    const accounts = result.otp_accounts || [];
-    updateBadgeCount(accounts.length);
-});
 
-// Alarm for periodic cleanup or notifications (if needed in future)
-chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'otpCleanup') {
-        // Perform any periodic maintenance
-        console.log('Performing periodic cleanup');
-    }
-});
-
-// Set up periodic alarm (optional)
-chrome.alarms.create('otpCleanup', {
-    delayInMinutes: 60,
-    periodInMinutes: 60
-});
+// Badge functionality removed - no initialization needed

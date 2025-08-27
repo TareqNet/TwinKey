@@ -1,4 +1,4 @@
-// Main Application Entry Point for OTP Manager
+// Main Application Entry Point for TwinKey
 
 class OTPManager {
     constructor() {
@@ -18,9 +18,14 @@ class OTPManager {
     /**
      * Initialize the application
      */
-    init() {
+    async init() {
         try {
-            console.log("Initializing OTP Manager...");
+            console.log("Initializing TwinKey...");
+            
+            // Wait for i18n to initialize
+            if (window.i18n) {
+                await window.i18n.init();
+            }
             
             // Initialize core components
             this.storage = new StorageManager();
@@ -33,14 +38,17 @@ class OTPManager {
             // Mark as initialized
             this.isInitialized = true;
             
-            console.log("OTP Manager initialized successfully");
+            console.log("TwinKey initialized successfully");
             
             // Show welcome message for first-time users
-            this.showWelcomeMessage();
+            await this.showWelcomeMessage();
             
         } catch (error) {
-            console.error("Failed to initialize OTP Manager:", error);
-            this.showErrorMessage("فشل في تحميل التطبيق. يرجى تحديث الصفحة.");
+            console.error("Failed to initialize TwinKey:", error);
+            const errorMsg = window.i18n ? 
+                window.i18n.t('app_init_error', 'Failed to load the application. Please refresh the page.') : 
+                'Failed to load the application. Please refresh the page.';
+            this.showErrorMessage(errorMsg);
         }
     }
 
@@ -158,12 +166,19 @@ class OTPManager {
     /**
      * Show welcome message for new users
      */
-    showWelcomeMessage() {
-        const accounts = this.storage.getAccounts();
-        if (accounts.length === 0) {
-            setTimeout(() => {
-                this.ui.showToast("مرحباً بك في مدير رموز OTP! ابدأ بإضافة أول حساب لك.", "info");
-            }, 1000);
+    async showWelcomeMessage() {
+        try {
+            const accounts = await this.storage.getAccounts();
+            if (accounts.length === 0) {
+                setTimeout(() => {
+                    const message = window.i18n ? 
+                        window.i18n.t('welcome_message', 'Welcome to OTP Manager! Start by adding your first account.') : 
+                        'Welcome to OTP Manager! Start by adding your first account.';
+                    this.ui.showToast(message, "info");
+                }, 1000);
+            }
+        } catch (error) {
+            console.error("Error showing welcome message:", error);
         }
     }
 
@@ -321,7 +336,7 @@ class OTPManager {
             this.ui.cleanup();
         }
         
-        console.log("OTP Manager cleanup completed");
+        console.log("TwinKey cleanup completed");
     }
 }
 

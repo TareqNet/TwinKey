@@ -1,4 +1,4 @@
-// Chrome Extension Storage Manager for OTP accounts and folders
+// TwinKey Storage Manager for accounts and folders
 
 class StorageManager {
     constructor() {
