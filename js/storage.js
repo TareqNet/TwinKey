@@ -6,9 +6,23 @@ class StorageManager {
         this.foldersKey = "otp_folders";
         this.settingsKey = "otp_settings";
         this.isExtension = typeof chrome !== 'undefined' && chrome.storage;
+        this.cryptoManager = null;
+        this.isEncryptionEnabled = false;
         
         // Initialize default data if not exists
         this.initializeDefaults();
+    }
+
+    /**
+     * Initialize crypto manager for secure storage
+     */
+    async initializeCrypto(cryptoManager) {
+        this.cryptoManager = cryptoManager;
+        this.isEncryptionEnabled = true;
+        
+        // Check if we have encrypted data and need authentication
+        const accounts = await this.getAccounts();
+        return accounts;
     }
 
     /**
@@ -90,12 +104,20 @@ class StorageManager {
     async addAccount(account) {
         try {
             const accounts = await this.getAccounts();
+            
+            // Encrypt the secret if crypto is enabled
+            let secret = account.secret;
+            if (this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
+                secret = await this.cryptoManager.encrypt(account.secret);
+            }
+            
             const newAccount = {
                 id: account.id || this.generateId(),
                 name: account.name,
                 service: account.service,
                 email: account.email,
-                secret: account.secret,
+                secret: secret,
+                encrypted: this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated(),
                 folderId: account.folderId || "uncategorized",
                 sortOrder: account.sortOrder !== undefined ? account.sortOrder : accounts.length,
                 createdAt: new Date().toISOString(),
@@ -167,6 +189,29 @@ class StorageManager {
             return accounts.find(acc => acc.id === accountId) || null;
         } catch (error) {
             console.error("Error getting account:", error);
+            return null;
+        }
+    }
+
+    /**
+     * Get decrypted secret for an account
+     * @param {string} accountId - Account ID
+     * @returns {Promise<string|null>} Decrypted secret or null
+     */
+    async getDecryptedSecret(accountId) {
+        try {
+            const account = await this.getAccount(accountId);
+            if (!account) return null;
+
+            // If account is encrypted, decrypt the secret
+            if (account.encrypted && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
+                return await this.cryptoManager.decrypt(account.secret);
+            }
+
+            // Return plain secret if not encrypted
+            return account.secret;
+        } catch (error) {
+            console.error("Error getting decrypted secret:", error);
             return null;
         }
     }
@@ -528,7 +573,26 @@ class StorageManager {
     async importData(data) {
         try {
             if (data.accounts) {
-                await this.saveAccounts(data.accounts);
+                // If crypto is enabled, encrypt the secrets during import
+                if (this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
+                    const encryptedAccounts = await Promise.all(
+                        data.accounts.map(async (account) => {
+                            if (!account.encrypted && account.secret) {
+                                // Encrypt the secret
+                                const encryptedSecret = await this.cryptoManager.encrypt(account.secret);
+                                return {
+                                    ...account,
+                                    secret: encryptedSecret,
+                                    encrypted: true
+                                };
+                            }
+                            return account;
+                        })
+                    );
+                    await this.saveAccounts(encryptedAccounts);
+                } else {
+                    await this.saveAccounts(data.accounts);
+                }
             }
             if (data.folders) {
                 await this.saveFolders(data.folders);

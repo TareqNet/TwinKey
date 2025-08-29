@@ -235,6 +235,81 @@
         </div>
     </div>
 
+    <!-- Authentication Modal -->
+    <div class="modal" id="authModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Authenticate to Access Secrets</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-shield-lock display-4 text-primary"></i>
+                        <p class="mt-2">Your OTP secrets are encrypted for security.</p>
+                    </div>
+                    
+                    <!-- System Auth Section -->
+                    <div id="systemSection" class="mb-3 d-none">
+                        <button type="button" class="btn btn-primary btn-lg w-100 mb-3" id="systemAuthBtn">
+                            <i class="bi bi-shield-check me-2"></i>
+                            Authenticate with System
+                        </button>
+                        <div class="text-center">
+                            <small class="text-muted">or</small>
+                        </div>
+                    </div>
+                    
+                    <!-- Password Auth Section -->
+                    <div id="passwordSection">
+                        <div class="mb-3">
+                            <label for="masterPassword" class="form-label">Master Password</label>
+                            <input type="password" class="form-control" id="masterPassword" placeholder="Enter master password">
+                        </div>
+                        <button type="button" class="btn btn-success w-100 mb-2" id="passwordAuthBtn">
+                            <i class="bi bi-key me-2"></i>
+                            Unlock with Password
+                        </button>
+                    </div>
+                    
+                    <!-- First Time Setup -->
+                    <div id="setupSection" class="d-none">
+                        <div class="alert alert-info">
+                            <strong>First Time Setup</strong><br>
+                            Choose how you want to secure your OTP secrets:
+                        </div>
+                        
+                        <div id="systemSetup" class="mb-3">
+                            <button type="button" class="btn btn-outline-primary w-100 mb-2" id="setupSystemBtn">
+                                <i class="bi bi-shield-check me-2"></i>
+                                Setup System Authentication
+                            </button>
+                            <div class="small text-muted text-center">
+                                Quick and secure - uses your browser profile
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="newMasterPassword" class="form-label">Create Master Password</label>
+                            <input type="password" class="form-control mb-2" id="newMasterPassword" placeholder="Create a strong password">
+                            <input type="password" class="form-control" id="confirmMasterPassword" placeholder="Confirm password">
+                        </div>
+                        
+                        <button type="button" class="btn btn-success w-100" id="setupPasswordBtn">
+                            <i class="bi bi-key me-2"></i>
+                            Setup Master Password
+                        </button>
+                    </div>
+                    
+                    <div class="mt-3 text-center">
+                        <small class="text-muted">
+                            Your data is encrypted locally and never sent to any server.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div class="modal" id="settingsModal" tabindex="-1">
         <div class="modal-dialog">
@@ -318,6 +393,7 @@
     <script src="js/bootstrap-minimal.js"></script>
     <script src="js/i18n.js"></script>
     <script src="js/totp.js"></script>
+    <script src="js/crypto.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/popup.js"></script>
 </body>
