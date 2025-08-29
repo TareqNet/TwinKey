@@ -182,10 +182,54 @@ class PopupManager {
             this.hideAccountDetails();
         });
 
+        // Settings button
+        document.getElementById("settingsBtn").addEventListener("click", () => {
+            this.showSettingsModal();
+        });
+
         // Language change listener
         document.addEventListener('languageChanged', async () => {
             await this.renderAccounts(); // Re-render to apply translations
         });
+
+        // Settings functionality
+        const exportBtn = document.getElementById("exportBtn");
+        if (exportBtn) {
+            exportBtn.addEventListener("click", () => {
+                this.exportData();
+            });
+        }
+
+        const importFile = document.getElementById("importFile");
+        const importBtn = document.getElementById("importBtn");
+        if (importFile && importBtn) {
+            importFile.addEventListener("change", (e) => {
+                importBtn.disabled = !e.target.files.length;
+            });
+
+            importBtn.addEventListener("click", () => {
+                this.importData();
+            });
+        }
+
+        // Settings modal close buttons
+        const settingsModal = document.getElementById("settingsModal");
+        if (settingsModal) {
+            // Close button
+            const closeBtn = settingsModal.querySelector('.btn-close, [data-bs-dismiss="modal"]');
+            if (closeBtn) {
+                closeBtn.addEventListener("click", () => {
+                    this.hideSettingsModal();
+                });
+            }
+
+            // Click outside to close
+            settingsModal.addEventListener("click", (e) => {
+                if (e.target === settingsModal) {
+                    this.hideSettingsModal();
+                }
+            });
+        }
     }
 
     showAddForm() {
@@ -1202,6 +1246,135 @@ class PopupManager {
         } catch (error) {
             console.error("Error deleting folder:", error);
             this.showToast("Error deleting folder", "error");
+        }
+    }
+
+    // ===============================
+    // Settings Methods
+    // ===============================
+
+    showSettingsModal() {
+        const modal = document.getElementById("settingsModal");
+        if (modal) {
+            modal.classList.add('show');
+            modal.style.display = 'block';
+            document.body.classList.add('modal-open');
+            this.updateSettingsStats();
+        }
+    }
+
+    hideSettingsModal() {
+        const modal = document.getElementById("settingsModal");
+        if (modal) {
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    async exportData() {
+        try {
+            const data = await this.storageManager.exportData();
+            if (!data) {
+                this.showToast("Error exporting data", "error");
+                return;
+            }
+
+            // Create filename with current date
+            const now = new Date();
+            const dateStr = now.getFullYear() + '-' + 
+                          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
+                          String(now.getDate()).padStart(2, '0');
+            const filename = `twinkey-backup-${dateStr}.json`;
+
+            // Create download link
+            const blob = new Blob([JSON.stringify(data, null, 2)], { 
+                type: 'application/json' 
+            });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+
+            this.showToast("Data exported successfully", "success");
+        } catch (error) {
+            console.error("Error exporting data:", error);
+            this.showToast("Error exporting data", "error");
+        }
+    }
+
+    async importData() {
+        try {
+            const fileInput = document.getElementById("importFile");
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                this.showToast("Please select a file", "error");
+                return;
+            }
+
+            // Read file
+            const text = await file.text();
+            const data = JSON.parse(text);
+
+            // Validate data structure
+            if (!data.accounts && !data.folders && !data.settings) {
+                this.showToast("Invalid backup file format", "error");
+                return;
+            }
+
+            // Confirm replacement
+            const confirmed = confirm("This will replace all existing data. Are you sure?");
+            if (!confirmed) {
+                return;
+            }
+
+            // Import data
+            const success = await this.storageManager.importData(data);
+            if (!success) {
+                this.showToast("Error importing data", "error");
+                return;
+            }
+
+            // Reload data and refresh UI
+            await this.loadData();
+            await this.renderFolders();
+            await this.renderAccounts();
+            
+            // Close modal and clear file input
+            this.hideSettingsModal();
+            fileInput.value = '';
+            document.getElementById("importBtn").disabled = true;
+
+            this.showToast("Data imported successfully", "success");
+        } catch (error) {
+            console.error("Error importing data:", error);
+            this.showToast("Error importing data. Please check file format.", "error");
+        }
+    }
+
+    async updateSettingsStats() {
+        try {
+            const accounts = await this.storageManager.getAccounts();
+            const folders = await this.storageManager.getFolders();
+            const storageSize = this.storageManager.getStorageSize();
+            
+            const statsAccounts = document.getElementById("statsAccounts");
+            const statsFolders = document.getElementById("statsFolders");
+            const statsStorage = document.getElementById("statsStorage");
+            
+            if (statsAccounts) statsAccounts.textContent = accounts.length;
+            if (statsFolders) statsFolders.textContent = folders.length;
+            if (statsStorage) {
+                statsStorage.textContent = Math.round(storageSize / 1024 * 10) / 10 + " KB";
+            }
+        } catch (error) {
+            console.error("Error updating stats:", error);
         }
     }
 

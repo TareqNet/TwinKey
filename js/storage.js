@@ -503,14 +503,14 @@ class StorageManager {
 
     /**
      * Export all data
-     * @returns {Object} Exported data
+     * @returns {Promise<Object>} Exported data
      */
-    exportData() {
+    async exportData() {
         try {
             return {
-                accounts: this.getAccounts(),
-                folders: this.getFolders(),
-                settings: this.getSettings(),
+                accounts: await this.getAccounts(),
+                folders: await this.getFolders(),
+                settings: await this.getSettings(),
                 exportedAt: new Date().toISOString(),
                 version: "1.0"
             };
@@ -523,18 +523,18 @@ class StorageManager {
     /**
      * Import data
      * @param {Object} data - Data to import
-     * @returns {boolean} Success status
+     * @returns {Promise<boolean>} Success status
      */
-    importData(data) {
+    async importData(data) {
         try {
             if (data.accounts) {
-                this.saveAccounts(data.accounts);
+                await this.saveAccounts(data.accounts);
             }
             if (data.folders) {
-                this.saveFolders(data.folders);
+                await this.saveFolders(data.folders);
             }
             if (data.settings) {
-                this.saveSettings(data.settings);
+                await this.saveSettings(data.settings);
             }
             return true;
         } catch (error) {

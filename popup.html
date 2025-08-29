@@ -20,7 +20,10 @@
                 <i class="bi bi-shield-lock me-2"></i>
                 <span data-i18n="app_title">Twin Key</span>
             </h6>
-            <div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-light btn-sm" id="settingsBtn" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                    <i class="bi bi-gear"></i>
+                </button>
                 <button type="button" class="btn btn-outline-light btn-sm" id="addAccountBtn">
                     <i class="bi bi-plus"></i>
                 </button>
@@ -229,6 +232,76 @@
         </div>
         <div class="p-3" id="detailsContent">
             <!-- Account details will be populated here -->
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Settings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Export Section -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">
+                            <i class="bi bi-download me-2"></i>
+                            Export Data
+                        </h6>
+                        <p class="text-muted small">Download all your accounts and folders as a JSON file.</p>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="exportBtn">
+                            <i class="bi bi-download me-1"></i>
+                            Export All Data
+                        </button>
+                    </div>
+                    
+                    <!-- Import Section -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">
+                            <i class="bi bi-upload me-2"></i>
+                            Import Data
+                        </h6>
+                        <p class="text-muted small">Upload a JSON file to restore your accounts and folders.</p>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="file" class="form-control form-control-sm" id="importFile" accept=".json">
+                            <button type="button" class="btn btn-outline-success btn-sm" id="importBtn" disabled>
+                                <i class="bi bi-upload me-1"></i>
+                                Import
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            <strong>Warning:</strong> This will replace all existing data!
+                        </div>
+                    </div>
+
+                    <!-- Statistics Section -->
+                    <div class="mb-3">
+                        <h6 class="mb-3">
+                            <i class="bi bi-graph-up me-2"></i>
+                            Statistics
+                        </h6>
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <div class="small text-muted">Accounts</div>
+                                <div class="fw-bold" id="statsAccounts">0</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="small text-muted">Folders</div>
+                                <div class="fw-bold" id="statsFolders">0</div>
+                            </div>
+                            <div class="col-4">
+                                <div class="small text-muted">Storage</div>
+                                <div class="fw-bold" id="statsStorage">0 KB</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
         </div>
     </div>
 
