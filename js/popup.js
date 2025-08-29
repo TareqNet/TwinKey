@@ -5,6 +5,12 @@ class PopupManager {
         this.otpUpdater = null;
         this.accounts = [];
         this.filteredAccounts = [];
+        this.folders = [];
+        this.currentFolderId = 'all';
+        this.sortBy = 'custom';
+        this.draggedElement = null;
+        this.containerDragSetup = false;
+        this.dropZonesVisible = false;
         
         this.init();
     }
@@ -25,21 +31,80 @@ class PopupManager {
         // Initialize TOTP generator
         this.totpGenerator = new TOTPGenerator();
         
-        await this.loadAccounts();
+        await this.loadData();
         this.setupEventListeners();
+        await this.renderFolders();
         await this.renderAccounts();
         this.startOTPUpdater();
         this.setupLanguageSelector();
     }
 
-    async loadAccounts() {
+    async loadData() {
         try {
             this.accounts = await this.storageManager.getAccounts();
-            this.filteredAccounts = [...this.accounts];
+            this.folders = await this.storageManager.getFolders() || [];
+            
+            // Initialize sortOrder for accounts that don't have it
+            let hasChanges = false;
+            this.accounts.forEach((account, index) => {
+                if (account.sortOrder === undefined) {
+                    account.sortOrder = index;
+                    hasChanges = true;
+                }
+            });
+            
+            // Save if we made changes
+            if (hasChanges) {
+                for (const account of this.accounts) {
+                    if (account.sortOrder !== undefined) {
+                        await this.storageManager.updateAccount(account.id, { sortOrder: account.sortOrder });
+                    }
+                }
+            }
+            
+            this.filterAndSortAccounts();
         } catch (error) {
-            console.error("Error loading accounts:", error);
-            this.showToast("حدث خطأ في تحميل الحسابات", "error");
+            console.error("Error loading data:", error);
+            this.showToast("Error loading data", "error");
         }
+    }
+
+    filterAndSortAccounts() {
+        // Filter by folder
+        let filtered = this.currentFolderId === 'all' 
+            ? [...this.accounts]
+            : this.accounts.filter(account => account.folderId === this.currentFolderId);
+
+        // Sort accounts
+        switch (this.sortBy) {
+            case 'name':
+                filtered.sort((a, b) => a.name.localeCompare(b.name));
+                break;
+            case 'service':
+                filtered.sort((a, b) => a.service.localeCompare(b.service));
+                break;
+            case 'created':
+                filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+                break;
+            case 'lastUsed':
+                filtered.sort((a, b) => {
+                    if (!a.lastUsed) return 1;
+                    if (!b.lastUsed) return -1;
+                    return new Date(b.lastUsed) - new Date(a.lastUsed);
+                });
+                break;
+            case 'custom':
+            default:
+                // Sort by custom sortOrder if available, otherwise keep original order
+                filtered.sort((a, b) => {
+                    const orderA = a.sortOrder !== undefined ? a.sortOrder : 999999;
+                    const orderB = b.sortOrder !== undefined ? b.sortOrder : 999999;
+                    return orderA - orderB;
+                });
+                break;
+        }
+
+        this.filteredAccounts = filtered;
     }
 
     setupEventListeners() {
@@ -67,15 +132,50 @@ class PopupManager {
             this.handleAddAccount();
         });
 
-        // Search functionality
-        document.getElementById("searchInput").addEventListener("input", async (e) => {
-            await this.handleSearch(e.target.value);
+        // Edit form event listeners
+        document.getElementById("closeEditFormBtn").addEventListener("click", () => {
+            this.hideEditForm();
         });
 
-        // Settings button - show settings in popup
-        document.getElementById("settingsBtn").addEventListener("click", () => {
-            this.showSettings();
+        document.getElementById("cancelEditFormBtn").addEventListener("click", () => {
+            this.hideEditForm();
         });
+
+        document.getElementById("editAccountFormEl").addEventListener("submit", (e) => {
+            e.preventDefault();
+            this.handleEditAccount();
+        });
+
+        // Folder form event listeners
+        document.getElementById("addFolderBtn").addEventListener("click", () => {
+            this.showAddFolderForm();
+        });
+
+        document.getElementById("closeFolderFormBtn").addEventListener("click", () => {
+            this.hideAddFolderForm();
+        });
+
+        document.getElementById("cancelFolderFormBtn").addEventListener("click", () => {
+            this.hideAddFolderForm();
+        });
+
+        document.getElementById("folderForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            this.handleAddFolder();
+        });
+
+        // Sort functionality
+        document.getElementById("sortSelect").addEventListener("change", (e) => {
+            this.sortBy = e.target.value;
+            this.filterAndSortAccounts();
+            this.renderAccounts();
+        });
+
+        // Search functionality
+        document.getElementById("searchInput").addEventListener("input", (e) => {
+            this.handleSearch(e.target.value);
+        });
+
 
         // Close details button
         document.getElementById("closeDetailsBtn").addEventListener("click", () => {
@@ -103,6 +203,7 @@ class PopupManager {
             name: document.getElementById("accountName").value.trim(),
             service: document.getElementById("serviceName").value,
             email: document.getElementById("accountEmail").value.trim(),
+            folderId: document.getElementById("accountFolder").value,
             secret: document.getElementById("secretKey").value.replace(/\s/g, "").toUpperCase()
         };
 
@@ -122,7 +223,6 @@ class PopupManager {
             const account = {
                 id: this.generateId(),
                 ...formData,
-                folderId: "uncategorized",
                 createdAt: new Date().toISOString(),
                 lastUsed: null
             };
@@ -131,7 +231,8 @@ class PopupManager {
             
             if (success) {
                 this.accounts.push(account);
-                this.filteredAccounts = [...this.accounts];
+                this.filterAndSortAccounts();
+                await this.renderFolders();
                 await this.renderAccounts();
                 this.hideAddForm();
                 this.showToast(window.i18n ? window.i18n.t('success_account_added') : 'Account added successfully', "success");
@@ -243,18 +344,45 @@ class PopupManager {
             );
             container.innerHTML = accountCards.join("");
             
+            // Setup container drag and drop once
+            if (!this.containerDragSetup) {
+                this.setupContainerDragAndDrop();
+                this.containerDragSetup = true;
+            }
+            
             // Add event listeners to account cards
             setTimeout(() => {
+                // Initialize dropdowns
+                document.querySelectorAll('[data-bs-toggle="dropdown"]').forEach(element => {
+                    new window.bootstrap.Dropdown(element);
+                });
+                
                 this.filteredAccounts.forEach(account => {
                     const card = document.querySelector(`[data-account-id="${account.id}"]`);
                     if (card) {
-                        card.addEventListener("click", async () => await this.showAccountDetails(account));
-                        
                         const copyBtn = card.querySelector(".copy-btn");
                         if (copyBtn) {
                             copyBtn.addEventListener("click", async (e) => {
                                 e.stopPropagation();
                                 await this.copyOTP(account);
+                            });
+                        }
+
+                        const editBtn = card.querySelector(".edit-account-btn");
+                        if (editBtn) {
+                            editBtn.addEventListener("click", (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                this.showEditForm(account);
+                            });
+                        }
+
+                        const deleteBtn = card.querySelector(".delete-account-btn");
+                        if (deleteBtn) {
+                            deleteBtn.addEventListener("click", (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                this.deleteAccount(account);
                             });
                         }
                     }
@@ -267,23 +395,302 @@ class PopupManager {
         const otp = await this.generateOTP(account.secret);
         const timeLeft = this.getTimeLeft();
         const timerClass = timeLeft <= 10 ? "danger" : timeLeft <= 20 ? "warning" : "";
+        
+        // Get folder name for display
+        const folder = this.folders.find(f => f.id === account.folderId);
+        const folderName = folder ? folder.name : 'Uncategorized';
 
         return `
             <div class="account-card fade-in" data-account-id="${account.id}">
                 <div class="account-header">
-                    <div class="account-service">${account.service}</div>
-                    <button class="copy-btn" title="نسخ الكود">
-                        <i class="bi bi-copy"></i>
-                    </button>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="drag-handle" draggable="true" title="Drag to reorder">
+                            <i class="bi bi-grip-vertical"></i>
+                        </div>
+                        <div class="account-service">${account.service}</div>
+                        <div class="account-folder-badge">${folderName}</div>
+                    </div>
+                    <div class="account-buttons">
+                        <div class="dropdown">
+                            <button class="options-btn" data-bs-toggle="dropdown" title="More options">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item edit-account-btn" href="#"><i class="bi bi-pencil me-2"></i>Edit</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item delete-account-btn text-danger" href="#"><i class="bi bi-trash me-2"></i>Delete</a></li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
                 <div class="account-name">${account.name}</div>
                 <div class="account-email">${account.email}</div>
                 <div class="otp-section">
-                    <div class="otp-code" data-otp="${otp}">${this.formatOTP(otp)}</div>
+                    <div class="otp-left-section">
+                        <div class="otp-code" data-otp="${otp}">${this.formatOTP(otp)}</div>
+                        <button class="copy-btn" title="Copy code">
+                            <i class="bi bi-copy"></i>
+                        </button>
+                    </div>
                     <div class="otp-timer ${timerClass}">${timeLeft}</div>
                 </div>
             </div>
         `;
+    }
+
+    setupContainerDragAndDrop() {
+        const container = document.getElementById('accountsContainer');
+        
+        // Handle dragstart on grip handles using event delegation
+        container.addEventListener('dragstart', (e) => {
+            if (e.target.closest('.drag-handle')) {
+                const card = e.target.closest('.account-card');
+                if (card) {
+                    this.draggedElement = card;
+                    card.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/html', '');
+                    
+                    // Show drop zones
+                    this.showDropZones();
+                }
+            }
+        });
+
+        // Handle dragend using event delegation
+        container.addEventListener('dragend', (e) => {
+            if (this.draggedElement) {
+                this.draggedElement.classList.remove('dragging');
+                this.draggedElement = null;
+                
+                // Hide drop zones
+                this.hideDropZones();
+            }
+        });
+
+        // Additional safety: hide drop zones on mouse leave during drag
+        container.addEventListener('mouseleave', (e) => {
+            if (this.draggedElement && this.dropZonesVisible) {
+                // Add a small delay to avoid hiding when just moving between elements
+                setTimeout(() => {
+                    if (this.dropZonesVisible && !container.matches(':hover')) {
+                        this.hideDropZones();
+                        if (this.draggedElement) {
+                            this.draggedElement.classList.remove('dragging');
+                            this.draggedElement = null;
+                        }
+                    }
+                }, 100);
+            }
+        });
+
+        // Handle dragover on drop zones
+        container.addEventListener('dragover', (e) => {
+            if (this.draggedElement) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                
+                // Highlight drop zone
+                const dropZone = e.target.closest('.drop-zone');
+                if (dropZone) {
+                    this.highlightDropZone(dropZone);
+                }
+            }
+        });
+
+        // Handle dragleave on drop zones
+        container.addEventListener('dragleave', (e) => {
+            const dropZone = e.target.closest('.drop-zone');
+            if (dropZone && !dropZone.contains(e.relatedTarget)) {
+                this.unhighlightDropZone(dropZone);
+            }
+        });
+
+        // Handle drop on drop zones
+        container.addEventListener('drop', (e) => {
+            const dropZone = e.target.closest('.drop-zone');
+            if (this.draggedElement && dropZone) {
+                e.preventDefault();
+                
+                const targetIndex = parseInt(dropZone.dataset.index);
+                
+                // Hide drop zones first to get clean DOM
+                this.hideDropZones();
+                
+                // Get current cards (excluding the dragged one)
+                const currentCards = Array.from(container.querySelectorAll('.account-card:not(.dragging)'));
+                
+                // Remove dragged element temporarily
+                this.draggedElement.remove();
+                this.draggedElement.classList.remove('dragging');
+                
+                // Insert at the correct position
+                if (targetIndex === 0) {
+                    // Insert at the beginning
+                    if (currentCards.length > 0) {
+                        container.insertBefore(this.draggedElement, currentCards[0]);
+                    } else {
+                        container.appendChild(this.draggedElement);
+                    }
+                } else if (targetIndex >= currentCards.length) {
+                    // Insert at the end
+                    container.appendChild(this.draggedElement);
+                } else {
+                    // Insert at specific position
+                    container.insertBefore(this.draggedElement, currentCards[targetIndex]);
+                }
+                
+                // Clean up
+                this.draggedElement = null;
+                
+                // Update order and save
+                this.updateAccountOrder();
+            }
+        });
+
+        // Global cleanup on document mouse events
+        document.addEventListener('mouseup', () => {
+            if (this.dropZonesVisible) {
+                setTimeout(() => {
+                    this.hideDropZones();
+                    if (this.draggedElement) {
+                        this.draggedElement.classList.remove('dragging');
+                        this.draggedElement = null;
+                    }
+                }, 100);
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.dropZonesVisible) {
+                this.hideDropZones();
+                if (this.draggedElement) {
+                    this.draggedElement.classList.remove('dragging');
+                    this.draggedElement = null;
+                }
+            }
+        });
+    }
+
+    getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.account-card:not(.dragging)')];
+        
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    showDropZones() {
+        if (this.dropZonesVisible) return;
+        
+        const container = document.getElementById('accountsContainer');
+        const cards = Array.from(container.querySelectorAll('.account-card:not(.dragging)'));
+        
+        // Store original cards order for reference
+        this.originalCardsOrder = cards.map(card => ({
+            element: card,
+            id: card.dataset.accountId
+        }));
+        
+        if (cards.length === 0) {
+            // If no cards, add one drop zone
+            const endDropZone = this.createDropZone(0, null);
+            container.appendChild(endDropZone);
+        } else {
+            // Insert drop zones between cards
+            for (let i = 0; i <= cards.length; i++) {
+                const dropZone = this.createDropZone(i, null);
+                
+                if (i === 0) {
+                    // Before first card
+                    container.insertBefore(dropZone, cards[0]);
+                } else if (i === cards.length) {
+                    // After last card
+                    container.appendChild(dropZone);
+                } else {
+                    // Between cards
+                    container.insertBefore(dropZone, cards[i]);
+                }
+            }
+        }
+        
+        // Show all drop zones with animation
+        setTimeout(() => {
+            container.querySelectorAll('.drop-zone').forEach(zone => {
+                zone.classList.add('visible');
+            });
+        }, 10);
+        
+        this.dropZonesVisible = true;
+    }
+
+    hideDropZones() {
+        const container = document.getElementById('accountsContainer');
+        const dropZones = container.querySelectorAll('.drop-zone');
+        
+        dropZones.forEach(zone => {
+            zone.classList.remove('visible', 'drag-over');
+        });
+        
+        // Remove drop zones after animation
+        setTimeout(() => {
+            dropZones.forEach(zone => zone.remove());
+        }, 200);
+        
+        this.dropZonesVisible = false;
+    }
+
+    createDropZone(index, cardId) {
+        const dropZone = document.createElement('div');
+        dropZone.className = 'drop-zone';
+        dropZone.dataset.index = index;
+        if (cardId) dropZone.dataset.cardId = cardId;
+        return dropZone;
+    }
+
+    highlightDropZone(dropZone) {
+        // Remove highlight from all other drop zones
+        const container = document.getElementById('accountsContainer');
+        container.querySelectorAll('.drop-zone.drag-over').forEach(zone => {
+            if (zone !== dropZone) {
+                zone.classList.remove('drag-over');
+            }
+        });
+        
+        // Highlight current drop zone
+        dropZone.classList.add('drag-over');
+    }
+
+    unhighlightDropZone(dropZone) {
+        dropZone.classList.remove('drag-over');
+    }
+
+    async updateAccountOrder() {
+        const cards = document.querySelectorAll('.account-card');
+        const newOrder = Array.from(cards).map((card, index) => {
+            const accountId = card.getAttribute('data-account-id');
+            const account = this.accounts.find(acc => acc.id === accountId);
+            if (account) {
+                account.sortOrder = index;
+                return account;
+            }
+        }).filter(Boolean);
+
+        // Update accounts in storage with new order
+        for (const account of newOrder) {
+            await this.storageManager.updateAccount(account.id, { sortOrder: account.sortOrder });
+        }
+        
+        // Update local accounts array with new order
+        this.accounts = await this.storageManager.getAccounts();
+        this.filterAndSortAccounts();
     }
 
     async generateOTP(secret) {
@@ -441,42 +848,363 @@ class PopupManager {
     }
 
     setupLanguageSelector() {
-        // Add language selector to header if not exists
-        const header = document.querySelector('.header .d-flex > div');
-        const addAccountBtn = document.getElementById('addAccountBtn');
-        
-        if (header && addAccountBtn && !document.getElementById('languageSelector')) {
-            const langBtn = document.createElement('button');
-            langBtn.id = 'languageSelector';
-            langBtn.className = 'btn btn-outline-light btn-sm me-1';
-            langBtn.innerHTML = '<i class="bi bi-translate"></i>';
-            langBtn.title = window.i18n ? window.i18n.t('language') : 'Language';
-            
-            langBtn.addEventListener('click', () => {
-                this.toggleLanguage();
-            });
-            
-            // Insert as first child instead of before addAccountBtn
-            header.insertBefore(langBtn, header.firstChild);
-        }
+        // Language selector removed - English only
     }
 
     async toggleLanguage() {
-        if (window.i18n) {
-            const currentLang = window.i18n.getCurrentLanguage();
-            const newLang = currentLang === 'ar' ? 'en' : 'ar';
-            await window.i18n.setLanguage(newLang);
-        }
+        // Language toggle removed - English only
     }
 
     generateId() {
         return Date.now().toString(36) + Math.random().toString(36).substr(2);
     }
 
-    showSettings() {
-        // Simple settings display - could be enhanced with modal
-        alert("Settings feature will be added in future updates!");
+    showEditForm(account) {
+        this.currentEditingAccount = account;
+        
+        // Populate form with current values
+        document.getElementById("editAccountName").value = account.name;
+        document.getElementById("editServiceName").value = account.service;
+        document.getElementById("editAccountEmail").value = account.email;
+        document.getElementById("editAccountFolder").value = account.folderId || 'uncategorized';
+        
+        // Show edit form
+        document.getElementById("editAccountForm").classList.remove("d-none");
+        document.getElementById("editAccountName").focus();
     }
+
+    hideEditForm() {
+        document.getElementById("editAccountForm").classList.add("d-none");
+        document.getElementById("editAccountFormEl").reset();
+        this.currentEditingAccount = null;
+    }
+
+    async handleEditAccount() {
+        if (!this.currentEditingAccount) return;
+
+        const formData = {
+            name: document.getElementById("editAccountName").value.trim(),
+            service: document.getElementById("editServiceName").value,
+            email: document.getElementById("editAccountEmail").value.trim(),
+            folderId: document.getElementById("editAccountFolder").value
+        };
+
+        // Validate form data
+        if (!formData.name || !formData.service || !formData.email) {
+            this.showToast("Please fill all fields", "error");
+            return;
+        }
+
+        try {
+            // Update account in storage
+            const updateData = {
+                name: formData.name,
+                service: formData.service,
+                email: formData.email,
+                folderId: formData.folderId
+            };
+
+            const success = await this.storageManager.updateAccount(this.currentEditingAccount.id, updateData);
+            
+            if (success) {
+                // Update local account data
+                const accountIndex = this.accounts.findIndex(acc => acc.id === this.currentEditingAccount.id);
+                if (accountIndex !== -1) {
+                    this.accounts[accountIndex] = { ...this.accounts[accountIndex], ...updateData };
+                }
+                
+                this.filterAndSortAccounts();
+                await this.renderFolders();
+                await this.renderAccounts();
+                this.hideEditForm();
+                this.showToast("Account updated successfully", "success");
+            } else {
+                this.showToast("Failed to update account", "error");
+            }
+        } catch (error) {
+            console.error("Error updating account:", error);
+            this.showToast("Error updating account", "error");
+        }
+    }
+
+    async deleteAccount(account) {
+        if (!confirm(`Are you sure you want to delete the account for ${account.name}? This action cannot be undone.`)) {
+            return;
+        }
+
+        try {
+            const success = await this.storageManager.deleteAccount(account.id);
+            
+            if (success) {
+                // Remove from local arrays
+                this.accounts = this.accounts.filter(acc => acc.id !== account.id);
+                this.filterAndSortAccounts();
+                
+                await this.renderFolders();
+                await this.renderAccounts();
+                this.showToast("Account deleted successfully", "success");
+            } else {
+                this.showToast("Failed to delete account", "error");
+            }
+        } catch (error) {
+            console.error("Error deleting account:", error);
+            this.showToast("Error deleting account", "error");
+        }
+    }
+
+    // Folder Management Functions
+    async renderFolders() {
+        const foldersList = document.getElementById("foldersList");
+        
+        // Get folder counts
+        const folderCounts = {};
+        this.accounts.forEach(account => {
+            const folderId = account.folderId || 'uncategorized';
+            folderCounts[folderId] = (folderCounts[folderId] || 0) + 1;
+        });
+
+        const totalCount = this.accounts.length;
+        
+        let html = `
+            <div class="folder-item ${this.currentFolderId === 'all' ? 'active' : ''}" data-folder-id="all">
+                <div class="folder-info">
+                    <i class="bi bi-collection"></i>
+                    <span>All Accounts</span>
+                </div>
+                <span class="folder-count">${totalCount}</span>
+            </div>
+        `;
+
+        // Add default folders
+        const defaultFolders = [
+            { id: 'uncategorized', name: 'Uncategorized', icon: 'bi-folder' }
+        ];
+
+        defaultFolders.forEach(folder => {
+            const count = folderCounts[folder.id] || 0;
+            html += `
+                <div class="folder-item ${this.currentFolderId === folder.id ? 'active' : ''}" data-folder-id="${folder.id}">
+                    <div class="folder-info">
+                        <i class="bi ${folder.icon}"></i>
+                        <span>${folder.name}</span>
+                    </div>
+                    <span class="folder-count">${count}</span>
+                </div>
+            `;
+        });
+
+        // Add custom folders
+        this.folders.forEach(folder => {
+            const count = folderCounts[folder.id] || 0;
+            html += `
+                <div class="folder-item ${this.currentFolderId === folder.id ? 'active' : ''}" data-folder-id="${folder.id}">
+                    <div class="folder-info">
+                        <i class="bi ${folder.icon || 'bi-folder'}"></i>
+                        <span>${folder.name}</span>
+                    </div>
+                    <div class="d-flex align-items-center gap-1">
+                        <span class="folder-count">${count}</span>
+                        <div class="folder-options dropdown">
+                            <button class="dropdown-toggle" data-bs-toggle="dropdown">
+                                <i class="bi bi-three-dots-vertical"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li><a class="dropdown-item edit-folder-btn" href="#" data-folder-id="${folder.id}">
+                                    <i class="bi bi-pencil me-2"></i>Edit
+                                </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item delete-folder-btn text-danger" href="#" data-folder-id="${folder.id}">
+                                    <i class="bi bi-trash me-2"></i>Delete
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        foldersList.innerHTML = html;
+
+        // Update current folder name
+        this.updateCurrentFolderName();
+
+        // Add folder click listeners
+        setTimeout(() => {
+            document.querySelectorAll('.folder-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    if (!e.target.closest('.folder-options')) {
+                        this.selectFolder(item.dataset.folderId);
+                    }
+                });
+            });
+
+            // Add folder management listeners
+            document.querySelectorAll('.edit-folder-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.editFolder(btn.dataset.folderId);
+                });
+            });
+
+            document.querySelectorAll('.delete-folder-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.deleteFolder(btn.dataset.folderId);
+                });
+            });
+        }, 0);
+
+        // Update folder options in forms
+        this.updateFolderOptions();
+    }
+
+    updateCurrentFolderName() {
+        const nameElement = document.getElementById('currentFolderName');
+        if (this.currentFolderId === 'all') {
+            nameElement.textContent = 'All Accounts';
+        } else if (this.currentFolderId === 'uncategorized') {
+            nameElement.textContent = 'Uncategorized';
+        } else {
+            const folder = this.folders.find(f => f.id === this.currentFolderId);
+            nameElement.textContent = folder ? folder.name : 'Unknown Folder';
+        }
+    }
+
+    selectFolder(folderId) {
+        this.currentFolderId = folderId;
+        this.filterAndSortAccounts();
+        this.renderFolders();
+        this.renderAccounts();
+    }
+
+    updateFolderOptions() {
+        const addFolderSelect = document.getElementById('accountFolder');
+        const editFolderSelect = document.getElementById('editAccountFolder');
+
+        let options = '<option value="uncategorized">Uncategorized</option>';
+        this.folders.forEach(folder => {
+            options += `<option value="${folder.id}">${folder.name}</option>`;
+        });
+
+        addFolderSelect.innerHTML = options;
+        editFolderSelect.innerHTML = options;
+    }
+
+    showAddFolderForm() {
+        document.getElementById("addFolderForm").classList.remove("d-none");
+        document.getElementById("folderName").focus();
+    }
+
+    hideAddFolderForm() {
+        document.getElementById("addFolderForm").classList.add("d-none");
+        document.getElementById("folderForm").reset();
+    }
+
+    async handleAddFolder() {
+        const formData = {
+            name: document.getElementById("folderName").value.trim(),
+            icon: document.getElementById("folderIcon").value
+        };
+
+        if (!formData.name) {
+            this.showToast("Please enter folder name", "error");
+            return;
+        }
+
+        try {
+            const folder = {
+                id: this.generateId(),
+                name: formData.name,
+                icon: formData.icon,
+                createdAt: new Date().toISOString()
+            };
+
+            const success = await this.storageManager.addFolder(folder);
+            
+            if (success) {
+                this.folders.push(folder);
+                await this.renderFolders();
+                this.hideAddFolderForm();
+                this.showToast("Folder added successfully", "success");
+            } else {
+                this.showToast("Failed to add folder", "error");
+            }
+        } catch (error) {
+            console.error("Error adding folder:", error);
+            this.showToast("Error adding folder", "error");
+        }
+    }
+
+    async editFolder(folderId) {
+        const folder = this.folders.find(f => f.id === folderId);
+        if (!folder) return;
+
+        const newName = prompt("Enter new folder name:", folder.name);
+        if (!newName || newName === folder.name) return;
+
+        try {
+            const success = await this.storageManager.updateFolder(folderId, { name: newName });
+            
+            if (success) {
+                folder.name = newName;
+                await this.renderFolders();
+                this.showToast("Folder updated successfully", "success");
+            } else {
+                this.showToast("Failed to update folder", "error");
+            }
+        } catch (error) {
+            console.error("Error updating folder:", error);
+            this.showToast("Error updating folder", "error");
+        }
+    }
+
+    async deleteFolder(folderId) {
+        const folder = this.folders.find(f => f.id === folderId);
+        if (!folder) return;
+
+        const accountsInFolder = this.accounts.filter(acc => acc.folderId === folderId);
+        let message = `Are you sure you want to delete the folder "${folder.name}"?`;
+        
+        if (accountsInFolder.length > 0) {
+            message += `\n\n${accountsInFolder.length} accounts in this folder will be moved to "Uncategorized".`;
+        }
+
+        if (!confirm(message)) return;
+
+        try {
+            // Move accounts to uncategorized
+            if (accountsInFolder.length > 0) {
+                for (const account of accountsInFolder) {
+                    await this.storageManager.updateAccount(account.id, { folderId: 'uncategorized' });
+                    account.folderId = 'uncategorized';
+                }
+            }
+
+            const success = await this.storageManager.deleteFolder(folderId);
+            
+            if (success) {
+                this.folders = this.folders.filter(f => f.id !== folderId);
+                
+                // If current folder was deleted, switch to all
+                if (this.currentFolderId === folderId) {
+                    this.currentFolderId = 'all';
+                }
+                
+                this.filterAndSortAccounts();
+                await this.renderFolders();
+                await this.renderAccounts();
+                this.showToast("Folder deleted successfully", "success");
+            } else {
+                this.showToast("Failed to delete folder", "error");
+            }
+        } catch (error) {
+            console.error("Error deleting folder:", error);
+            this.showToast("Error deleting folder", "error");
+        }
+    }
+
 }
 
 // Initialize popup when DOM is loaded

@@ -20,7 +20,7 @@ class StorageManager {
             // Create default uncategorized folder
             await this.addFolder({
                 id: "uncategorized",
-                name: "غير مصنف",
+                name: "Uncategorized",
                 parentId: null,
                 createdAt: new Date().toISOString()
             });
@@ -97,6 +97,7 @@ class StorageManager {
                 email: account.email,
                 secret: account.secret,
                 folderId: account.folderId || "uncategorized",
+                sortOrder: account.sortOrder !== undefined ? account.sortOrder : accounts.length,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 lastUsed: account.lastUsed || null
@@ -142,13 +143,13 @@ class StorageManager {
     /**
      * Delete account
      * @param {string} accountId - Account ID
-     * @returns {boolean} Success status
+     * @returns {Promise<boolean>} Success status
      */
-    deleteAccount(accountId) {
+    async deleteAccount(accountId) {
         try {
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             const filteredAccounts = accounts.filter(acc => acc.id !== accountId);
-            return this.saveAccounts(filteredAccounts);
+            return await this.saveAccounts(filteredAccounts);
         } catch (error) {
             console.error("Error deleting account:", error);
             return false;
@@ -158,11 +159,11 @@ class StorageManager {
     /**
      * Get account by ID
      * @param {string} accountId - Account ID
-     * @returns {Object|null} Account object or null
+     * @returns {Promise<Object|null>} Account object or null
      */
-    getAccount(accountId) {
+    async getAccount(accountId) {
         try {
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             return accounts.find(acc => acc.id === accountId) || null;
         } catch (error) {
             console.error("Error getting account:", error);
@@ -173,11 +174,11 @@ class StorageManager {
     /**
      * Get accounts by folder ID
      * @param {string} folderId - Folder ID
-     * @returns {Array} Array of accounts
+     * @returns {Promise<Array>} Array of accounts
      */
-    getAccountsByFolder(folderId) {
+    async getAccountsByFolder(folderId) {
         try {
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             if (folderId === "all") {
                 return accounts;
             }
@@ -261,9 +262,9 @@ class StorageManager {
      * @param {Object} updates - Updates to apply
      * @returns {boolean} Success status
      */
-    updateFolder(folderId, updates) {
+    async updateFolder(folderId, updates) {
         try {
-            const folders = this.getFolders();
+            const folders = await this.getFolders();
             const index = folders.findIndex(folder => folder.id === folderId);
             
             if (index === -1) {
@@ -275,7 +276,7 @@ class StorageManager {
                 ...updates
             };
 
-            return this.saveFolders(folders);
+            return await this.saveFolders(folders);
         } catch (error) {
             console.error("Error updating folder:", error);
             return false;
@@ -287,26 +288,26 @@ class StorageManager {
      * @param {string} folderId - Folder ID
      * @returns {boolean} Success status
      */
-    deleteFolder(folderId) {
+    async deleteFolder(folderId) {
         try {
-            // Can"t delete default folders
+            // Can't delete default folders
             if (folderId === "uncategorized" || folderId === "all") {
                 return false;
             }
 
             // Move all accounts from this folder to uncategorized
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             accounts.forEach(account => {
                 if (account.folderId === folderId) {
                     account.folderId = "uncategorized";
                 }
             });
-            this.saveAccounts(accounts);
+            await this.saveAccounts(accounts);
 
             // Remove folder
-            const folders = this.getFolders();
+            const folders = await this.getFolders();
             const filteredFolders = folders.filter(folder => folder.id !== folderId);
-            return this.saveFolders(filteredFolders);
+            return await this.saveFolders(filteredFolders);
         } catch (error) {
             console.error("Error deleting folder:", error);
             return false;
@@ -318,9 +319,9 @@ class StorageManager {
      * @param {string} folderId - Folder ID
      * @returns {Object|null} Folder object or null
      */
-    getFolder(folderId) {
+    async getFolder(folderId) {
         try {
-            const folders = this.getFolders();
+            const folders = await this.getFolders();
             return folders.find(folder => folder.id === folderId) || null;
         } catch (error) {
             console.error("Error getting folder:", error);
@@ -380,9 +381,9 @@ class StorageManager {
      * @param {string} query - Search query
      * @returns {Array} Filtered accounts
      */
-    searchAccounts(query) {
+    async searchAccounts(query) {
         try {
-            const accounts = this.getAccounts();
+            const accounts = await this.getAccounts();
             if (!query) return accounts;
 
             const lowercaseQuery = query.toLowerCase();

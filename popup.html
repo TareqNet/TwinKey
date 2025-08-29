@@ -21,11 +21,8 @@
                 <span data-i18n="app_title">Twin Key</span>
             </h6>
             <div>
-                <button type="button" class="btn btn-outline-light btn-sm me-1" id="addAccountBtn">
+                <button type="button" class="btn btn-outline-light btn-sm" id="addAccountBtn">
                     <i class="bi bi-plus"></i>
-                </button>
-                <button type="button" class="btn btn-outline-light btn-sm" id="settingsBtn">
-                    <i class="bi bi-gear"></i>
                 </button>
             </div>
         </div>
@@ -41,14 +38,50 @@
         </div>
     </div>
 
-    <!-- Accounts List -->
-    <div class="accounts-container" id="accountsContainer">
-        <div class="text-center text-muted py-4" id="emptyState">
-            <i class="bi bi-inbox display-6"></i>
-            <p class="mt-2 mb-0" data-i18n="no_accounts">No accounts</p>
-            <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn" data-i18n="add_account">
-                Add Account
-            </button>
+    <!-- Main Content Area -->
+    <div class="main-content d-flex">
+        <!-- Folders Sidebar -->
+        <div class="folders-sidebar" id="foldersSidebar">
+            <div class="folders-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0">Folders</h6>
+                    <button class="btn btn-sm btn-outline-primary" id="addFolderBtn" title="Add Folder">
+                        <i class="bi bi-plus"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="folders-list" id="foldersList">
+                <!-- Folders will be populated here -->
+            </div>
+        </div>
+
+        <!-- Accounts Container -->
+        <div class="accounts-section flex-fill">
+            <!-- Sort Options -->
+            <div class="sort-bar p-2 bg-light border-bottom">
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted" id="currentFolderName">All Accounts</small>
+                    <div class="sort-options">
+                        <select class="form-select form-select-sm" id="sortSelect" style="width: auto;">
+                            <option value="custom">Custom Order</option>
+                            <option value="name">Sort by Name</option>
+                            <option value="service">Sort by Service</option>
+                            <option value="created">Sort by Date Added</option>
+                            <option value="lastUsed">Sort by Last Used</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="accounts-container" id="accountsContainer">
+                <div class="text-center text-muted py-4" id="emptyState">
+                    <i class="bi bi-inbox display-6"></i>
+                    <p class="mt-2 mb-0" data-i18n="no_accounts">No accounts</p>
+                    <button type="button" class="btn btn-primary btn-sm mt-2" id="addFirstAccountBtn" data-i18n="add_account">
+                        Add Account
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -78,12 +111,18 @@
                     <option value="Twitter">Twitter</option>
                     <option value="Discord">Discord</option>
                     <option value="Amazon">Amazon</option>
-                    <option value="Other">أخرى</option>
+                    <option value="Other">Other</option>
                 </select>
             </div>
             <div class="mb-2">
                 <label for="accountEmail" class="form-label form-label-sm" data-i18n="email">Email</label>
                 <input type="email" class="form-control form-control-sm" id="accountEmail" required>
+            </div>
+            <div class="mb-2">
+                <label for="accountFolder" class="form-label form-label-sm">Folder</label>
+                <select class="form-select form-select-sm" id="accountFolder">
+                    <option value="uncategorized">Uncategorized</option>
+                </select>
             </div>
             <div class="mb-3">
                 <label for="secretKey" class="form-label form-label-sm" data-i18n="secret_key">Secret Key</label>
@@ -93,6 +132,87 @@
             <div class="d-flex gap-2">
                 <button type="submit" class="btn btn-primary btn-sm flex-fill" data-i18n="add">Add</button>
                 <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelFormBtn" data-i18n="cancel">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Edit Account Form -->
+    <div class="add-account-form d-none" id="editAccountForm">
+        <div class="form-header bg-light p-2 border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Edit Account</h6>
+                <button type="button" class="btn btn-sm" id="closeEditFormBtn">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <form class="p-3" id="editAccountFormEl">
+            <div class="mb-2">
+                <label for="editAccountName" class="form-label form-label-sm">Account Name</label>
+                <input type="text" class="form-control form-control-sm" id="editAccountName" required>
+            </div>
+            <div class="mb-2">
+                <label for="editServiceName" class="form-label form-label-sm">Service Type</label>
+                <select class="form-select form-select-sm" id="editServiceName" required>
+                    <option value="">Choose Service</option>
+                    <option value="Google">Google</option>
+                    <option value="Microsoft">Microsoft</option>
+                    <option value="GitHub">GitHub</option>
+                    <option value="Facebook">Facebook</option>
+                    <option value="Twitter">Twitter</option>
+                    <option value="Discord">Discord</option>
+                    <option value="Amazon">Amazon</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="mb-2">
+                <label for="editAccountEmail" class="form-label form-label-sm">Email</label>
+                <input type="email" class="form-control form-control-sm" id="editAccountEmail" required>
+            </div>
+            <div class="mb-3">
+                <label for="editAccountFolder" class="form-label form-label-sm">Folder</label>
+                <select class="form-select form-select-sm" id="editAccountFolder">
+                    <option value="uncategorized">Uncategorized</option>
+                </select>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm flex-fill">Save Changes</button>
+                <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelEditFormBtn">Cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Add Folder Form -->
+    <div class="add-account-form d-none" id="addFolderForm">
+        <div class="form-header bg-light p-2 border-bottom">
+            <div class="d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">Add Folder</h6>
+                <button type="button" class="btn btn-sm" id="closeFolderFormBtn">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </div>
+        </div>
+        <form class="p-3" id="folderForm">
+            <div class="mb-3">
+                <label for="folderName" class="form-label form-label-sm">Folder Name</label>
+                <input type="text" class="form-control form-control-sm" id="folderName" required>
+            </div>
+            <div class="mb-3">
+                <label for="folderIcon" class="form-label form-label-sm">Icon (optional)</label>
+                <select class="form-select form-select-sm" id="folderIcon">
+                    <option value="bi-folder">📁 Default</option>
+                    <option value="bi-briefcase">💼 Work</option>
+                    <option value="bi-house">🏠 Personal</option>
+                    <option value="bi-shield-lock">🔒 Security</option>
+                    <option value="bi-code-slash">💻 Development</option>
+                    <option value="bi-credit-card">💳 Finance</option>
+                    <option value="bi-people">👥 Social</option>
+                    <option value="bi-cloud">☁️ Cloud</option>
+                </select>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary btn-sm flex-fill">Add Folder</button>
+                <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelFolderFormBtn">Cancel</button>
             </div>
         </form>
     </div>

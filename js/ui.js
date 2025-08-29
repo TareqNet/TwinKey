@@ -96,20 +96,20 @@ class UIController {
 
         // Validate secret key
         if (!this.totp.validateSecret(account.secret)) {
-            this.showToast("المفتاح السري غير صالح. يجب أن يكون 16 حرف على الأقل من Base32", "error");
+            this.showToast("Invalid secret key. Must be at least 16 characters of Base32", "error");
             return;
         }
 
         // Add account
         const accountId = await this.storage.addAccount(account);
         if (accountId) {
-            this.showToast("تم إضافة الحساب بنجاح", "success");
+            this.showToast("Account added successfully", "success");
             this.resetAccountForm();
             bootstrap.Modal.getInstance(document.getElementById("addAccountModal")).hide();
             await this.renderAccounts();
             await this.renderFolders(); // Update counts
         } else {
-            this.showToast("خطأ في إضافة الحساب", "error");
+            this.showToast("Error adding account", "error");
         }
     }
 
@@ -120,22 +120,22 @@ class UIController {
      */
     validateAccountData(account) {
         if (!account.name) {
-            this.showToast("يرجى إدخال اسم الحساب", "error");
+            this.showToast("Please enter account name", "error");
             return false;
         }
 
         if (!account.service) {
-            this.showToast("يرجى اختيار نوع الخدمة", "error");
+            this.showToast("Please select service type", "error");
             return false;
         }
 
         if (!account.email) {
-            this.showToast("يرجى إدخال البريد الإلكتروني", "error");
+            this.showToast("Please enter email address", "error");
             return false;
         }
 
         if (!account.secret) {
-            this.showToast("يرجى إدخال المفتاح السري", "error");
+            this.showToast("Please enter secret key", "error");
             return false;
         }
 
@@ -146,7 +146,7 @@ class UIController {
         );
 
         if (isDuplicate) {
-            this.showToast("يوجد حساب بنفس البريد الإلكتروني والخدمة", "error");
+            this.showToast("An account with the same email and service already exists", "error");
             return false;
         }
 
@@ -168,14 +168,14 @@ class UIController {
         const account = await this.storage.getAccount(accountId);
         if (!account) return;
 
-        if (confirm(`هل أنت متأكد من حذف حساب ${account.name}؟`)) {
+        if (confirm(`Are you sure you want to delete account ${account.name}?`)) {
             if (await this.storage.deleteAccount(accountId)) {
-                this.showToast("تم حذف الحساب بنجاح", "success");
+                this.showToast("Account deleted successfully", "success");
                 await this.renderAccounts();
                 await this.renderFolders();
                 bootstrap.Modal.getInstance(document.getElementById("accountDetailsModal"))?.hide();
             } else {
-                this.showToast("خطأ في حذف الحساب", "error");
+                this.showToast("Error deleting account", "error");
             }
         }
     }
@@ -192,22 +192,22 @@ class UIController {
         document.getElementById("accountDetailsBody").innerHTML = `
             <div class="row">
                 <div class="col-md-6">
-                    <strong>نوع الخدمة:</strong><br>
+                    <strong>Service Type:</strong><br>
                     <span class="badge bg-primary">${account.service}</span>
                 </div>
                 <div class="col-md-6">
-                    <strong>البريد الإلكتروني:</strong><br>
+                    <strong>Email Address:</strong><br>
                     ${account.email}
                 </div>
             </div>
             <hr>
             <div class="row">
                 <div class="col-md-6">
-                    <strong>تاريخ الإنشاء:</strong><br>
+                    <strong>Created Date:</strong><br>
                     ${new Date(account.createdAt).toLocaleDateString("ar")}
                 </div>
                 <div class="col-md-6">
-                    <strong>المجلد:</strong><br>
+                    <strong>Folder:</strong><br>
                     ${this.getFolderName(account.folderId)}
                 </div>
             </div>
@@ -220,7 +220,7 @@ class UIController {
 
         document.getElementById("editAccountBtn").onclick = () => {
             // TODO: Implement edit functionality
-            this.showToast("ميزة التعديل قيد التطوير", "info");
+            this.showToast("Edit feature is under development", "info");
         };
 
         new bootstrap.Modal(document.getElementById("accountDetailsModal")).show();
@@ -237,7 +237,7 @@ class UIController {
         const folderName = document.getElementById("folderName").value.trim();
         
         if (!folderName) {
-            this.showToast("يرجى إدخال اسم المجلد", "error");
+            this.showToast("Please enter folder name", "error");
             return;
         }
 
@@ -248,19 +248,19 @@ class UIController {
         );
 
         if (isDuplicate) {
-            this.showToast("يوجد مجلد بنفس الاسم", "error");
+            this.showToast("A folder with the same name already exists", "error");
             return;
         }
 
         const folderId = await this.storage.addFolder({ name: folderName });
         if (folderId) {
-            this.showToast("تم إضافة المجلد بنجاح", "success");
+            this.showToast("Folder added successfully", "success");
             this.resetFolderForm();
             bootstrap.Modal.getInstance(document.getElementById("addFolderModal")).hide();
             await this.renderFolders();
             await this.updateFolderOptions();
         } else {
-            this.showToast("خطأ في إضافة المجلد", "error");
+            this.showToast("Error adding folder", "error");
         }
     }
 
@@ -297,11 +297,11 @@ class UIController {
      * @returns {string} Display name
      */
     getFolderDisplayName(folderId) {
-        if (folderId === "all") return "جميع الحسابات";
-        if (folderId === "uncategorized") return "غير مصنف";
+        if (folderId === "all") return "All Accounts";
+        if (folderId === "uncategorized") return "Uncategorized";
         
         const folder = this.storage.getFolder(folderId);
-        return folder ? folder.name : "غير معروف";
+        return folder ? folder.name : "Unknown";
     }
 
     /**
@@ -437,7 +437,7 @@ class UIController {
             <div class="otp-display">
                 <div class="otp-code" data-account-id="${account.id}">${otpCode}</div>
                 <div class="otp-timer">
-                    <small>ينتهي في ${remainingSeconds} ثانية</small>
+                    <small>Expires in ${remainingSeconds} seconds</small>
                     <svg class="progress-ring" width="40" height="40">
                         <circle class="progress-ring-circle" cx="20" cy="20" r="16"></circle>
                         <circle class="progress-ring-progress" cx="20" cy="20" r="16" 
@@ -446,7 +446,7 @@ class UIController {
                 </div>
                 <button type="button" class="btn copy-btn btn-sm mt-2" 
                         onclick="event.stopPropagation(); app.ui.copyToClipboard('${otpCode}', this)">
-                    <i class="bi bi-copy"></i> نسخ
+                    <i class="bi bi-copy"></i> Copy
                 </button>
             </div>
         `;
@@ -522,7 +522,7 @@ class UIController {
         
         // Update timer text
         document.querySelectorAll(".otp-timer small").forEach(timer => {
-            timer.textContent = `ينتهي في ${remainingSeconds} ثانية`;
+            timer.textContent = `Expires in ${remainingSeconds} seconds`;
         });
         
         // Update progress rings
@@ -544,14 +544,14 @@ class UIController {
             const diffMinutes = Math.floor((now - date) / (1000 * 60));
             
             if (diffMinutes < 1) {
-                lastUpdate.textContent = "الآن";
+                lastUpdate.textContent = "Now";
             } else if (diffMinutes < 60) {
-                lastUpdate.textContent = `منذ ${diffMinutes} دقيقة`;
+                lastUpdate.textContent = `${diffMinutes} minutes ago`;
             } else {
-                lastUpdate.textContent = date.toLocaleString("ar");
+                lastUpdate.textContent = date.toLocaleString("en");
             }
         } else {
-            lastUpdate.textContent = "لم يتم التحديث";
+            lastUpdate.textContent = "Not updated";
         }
     }
 
@@ -570,7 +570,7 @@ class UIController {
             
             // Visual feedback
             const originalText = button.innerHTML;
-            button.innerHTML = '<i class="bi bi-check"></i> تم النسخ';
+            button.innerHTML = '<i class="bi bi-check"></i> Copied';
             button.classList.add("btn-success");
             button.classList.remove("copy-btn");
             
@@ -580,10 +580,10 @@ class UIController {
                 button.classList.add("copy-btn");
             }, 2000);
             
-            this.showToast("تم نسخ الرمز بنجاح", "success");
+            this.showToast("Code copied successfully", "success");
         } catch (error) {
             console.error("Failed to copy:", error);
-            this.showToast("فشل في نسخ الرمز", "error");
+            this.showToast("Failed to copy code", "error");
         }
     }
 

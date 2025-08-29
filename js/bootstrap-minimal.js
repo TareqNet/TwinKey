@@ -42,11 +42,61 @@ class BootstrapToast {
     }
 }
 
+class BootstrapDropdown {
+    constructor(element) {
+        this.element = element;
+        this.menu = element.nextElementSibling;
+        this.isOpen = false;
+        
+        this.element.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.toggle();
+        });
+        
+        document.addEventListener('click', (e) => {
+            if (!this.element.contains(e.target) && !this.menu.contains(e.target)) {
+                this.hide();
+            }
+        });
+    }
+    
+    toggle() {
+        if (this.isOpen) {
+            this.hide();
+        } else {
+            this.show();
+        }
+    }
+    
+    show() {
+        this.menu.classList.add('show');
+        this.isOpen = true;
+    }
+    
+    hide() {
+        this.menu.classList.remove('show');
+        this.isOpen = false;
+    }
+    
+    static getInstance(element) {
+        return new BootstrapDropdown(element);
+    }
+}
+
 // Global Bootstrap object for compatibility
 window.bootstrap = {
     Modal: BootstrapModal,
-    Toast: BootstrapToast
+    Toast: BootstrapToast,
+    Dropdown: BootstrapDropdown
 };
+
+// Auto-initialize dropdowns
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-bs-toggle="dropdown"]').forEach(element => {
+        new BootstrapDropdown(element);
+    });
+});
 
 // Initialize modal close functionality
 document.addEventListener('DOMContentLoaded', () => {

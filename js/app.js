@@ -134,11 +134,11 @@ class OTPManager {
         
         if (isOnline) {
             statusIndicator.className = "badge bg-success";
-            statusIndicator.textContent = "متصل";
+            statusIndicator.textContent = "Online";
             setTimeout(() => statusIndicator.style.display = "none", 3000);
         } else {
             statusIndicator.className = "badge bg-warning";
-            statusIndicator.textContent = "غير متصل";
+            statusIndicator.textContent = "Offline";
             statusIndicator.style.display = "inline";
         }
     }
@@ -288,11 +288,11 @@ class OTPManager {
             return false;
         }
 
-        if (confirm("هل أنت متأكد من حذف جميع البيانات؟ هذا الإجراء لا يمكن التراجع عنه.")) {
+        if (confirm("Are you sure you want to delete all data? This action cannot be undone.")) {
             const success = this.storage.clearAllData();
             if (success && this.ui) {
                 this.ui.loadInitialData(); // Refresh UI
-                this.ui.showToast("تم حذف جميع البيانات بنجاح", "success");
+                this.ui.showToast("All data deleted successfully", "success");
             }
             return success;
         }
@@ -306,18 +306,18 @@ class OTPManager {
      */
     getAppInfo() {
         return {
-            name: "مدير رموز OTP",
+            name: "OTP Manager",
             version: "1.0.0",
-            description: "تطبيق ويب لإدارة رموز المصادقة الثنائية",
+            description: "Web application for managing two-factor authentication codes",
             author: "Claude Code",
             license: "MIT",
             features: [
-                "إدارة حسابات OTP",
-                "تنظيم في مجلدات",
-                "البحث والترشيح",
-                "تحديث تلقائي للرموز",
-                "نسخ سريع للرموز",
-                "واجهة مستخدم عربية"
+                "OTP account management",
+                "Folder organization",
+                "Search and filtering",
+                "Automatic code updates",
+                "Quick code copying",
+                "English user interface"
             ],
             technical: {
                 storage: "Local Storage",

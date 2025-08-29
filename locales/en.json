@@ -1,5 +1,5 @@
 {
-  "app_title": "Twin Key - 2FA Manager",
+  "app_title": "Twin Key",
   "add_account": "Add Account",
   "add_folder": "Add Folder",
   "folders": "Folders",
@@ -55,7 +55,6 @@
   "light_theme": "Light",
   "dark_theme": "Dark",
   "english": "English",
-  "arabic": "العربية",
   "open_full_app": "Open Full App",
   "extension_title": "Twin Key - Chrome Extension",
   "refresh_codes": "Refresh Codes",
