@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "Twin Key",
-  "description": "Secure two-factor authentication manager with multi-language support and folder organization",
+  "description": "Secure TOTP manager with AES-256 encryption, drag-and-drop organization, and folder management",
   "version": "1.0.0",
-  "author": "OTP UI Team",
+  "author": "Tareq Nassry <tareq@tareq.website>",
   "permissions": [
     "storage",
     "activeTab",
@@ -43,6 +43,6 @@
   ],
   "minimum_chrome_version": "88",
   "offline_enabled": true,
-  "homepage_url": "https://github.com/your-repo/twinkey",
+  "homepage_url": "https://github.com/TareqNet/TwinKey",
   "short_name": "Twin Key"
 }

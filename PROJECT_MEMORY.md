@@ -3,6 +3,10 @@
 ## Project Overview
 A secure Chrome extension for managing TOTP (Time-based One-Time Password) authentication codes with advanced encryption and user-friendly interface.
 
+**Developer**: Tareq Nassry <tareq@tareq.website>  
+**Repository**: https://github.com/TareqNet/TwinKey  
+**License**: MIT
+
 ## Development Timeline & Solutions
 
 ### Phase 1: Initial Setup & Language Conversion

@@ -1,5 +1,9 @@
 # Twin Key OTP Manager - Features Documentation
 
+**Developer**: Tareq Nassry <tareq@tareq.website>  
+**Repository**: https://github.com/TareqNet/TwinKey  
+**License**: MIT
+
 ## 🔐 Security Features
 
 ### Advanced Encryption

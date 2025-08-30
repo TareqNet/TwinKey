@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a secure Chrome Extension OTP (One-Time Password) manager built with vanilla HTML, CSS, and JavaScript. It provides a complete TOTP authentication system with advanced encryption, folder organization, drag-and-drop reordering, and comprehensive security features.
 
+**Developer**: Tareq Nassry <tareq@tareq.website>  
+**Repository**: https://github.com/TareqNet/TwinKey  
+**License**: MIT
+
 ## Development Commands
 
 Since this is a Chrome extension, no build tools are required:
