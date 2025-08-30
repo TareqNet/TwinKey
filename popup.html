@@ -248,26 +248,15 @@
                         <p class="mt-2">Your OTP secrets are encrypted for security.</p>
                     </div>
                     
-                    <!-- System Auth Section -->
-                    <div id="systemSection" class="mb-3 d-none">
-                        <button type="button" class="btn btn-primary btn-lg w-100 mb-3" id="systemAuthBtn">
-                            <i class="bi bi-shield-check me-2"></i>
-                            Authenticate with System
-                        </button>
-                        <div class="text-center">
-                            <small class="text-muted">or</small>
-                        </div>
-                    </div>
-                    
                     <!-- Password Auth Section -->
                     <div id="passwordSection">
                         <div class="mb-3">
-                            <label for="masterPassword" class="form-label">Master Password</label>
-                            <input type="password" class="form-control" id="masterPassword" placeholder="Enter master password">
+                            <label for="masterPassword" class="form-label">Enter PIN/Password</label>
+                            <input type="password" class="form-control" id="masterPassword" placeholder="Enter your PIN or password" maxlength="20">
                         </div>
                         <button type="button" class="btn btn-success w-100 mb-2" id="passwordAuthBtn">
-                            <i class="bi bi-key me-2"></i>
-                            Unlock with Password
+                            <i class="bi bi-unlock me-2"></i>
+                            Unlock
                         </button>
                     </div>
                     
@@ -278,25 +267,17 @@
                             Choose how you want to secure your OTP secrets:
                         </div>
                         
-                        <div id="systemSetup" class="mb-3">
-                            <button type="button" class="btn btn-outline-primary w-100 mb-2" id="setupSystemBtn">
-                                <i class="bi bi-shield-check me-2"></i>
-                                Setup System Authentication
-                            </button>
-                            <div class="small text-muted text-center">
-                                Quick and secure - uses your browser profile
+                        <div class="mb-3">
+                            <label for="newMasterPassword" class="form-label">Create PIN/Password</label>
+                            <input type="password" class="form-control mb-2" id="newMasterPassword" placeholder="Enter a 4-8 digit PIN or password" maxlength="20">
+                            <div class="small text-muted">
+                                Use a simple PIN (like 1234) or short password for quick access
                             </div>
                         </div>
                         
-                        <div class="mb-3">
-                            <label for="newMasterPassword" class="form-label">Create Master Password</label>
-                            <input type="password" class="form-control mb-2" id="newMasterPassword" placeholder="Create a strong password">
-                            <input type="password" class="form-control" id="confirmMasterPassword" placeholder="Confirm password">
-                        </div>
-                        
                         <button type="button" class="btn btn-success w-100" id="setupPasswordBtn">
-                            <i class="bi bi-key me-2"></i>
-                            Setup Master Password
+                            <i class="bi bi-lock me-2"></i>
+                            Setup Authentication
                         </button>
                     </div>
                     

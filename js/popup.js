@@ -1277,40 +1277,38 @@ class PopupManager {
     // ===============================
 
     async checkAuthenticationRequired() {
-        // Always require authentication when opening the popup
-        // This ensures security by default
-        return true;
+        // Check if password auth is set up
+        const hasAuth = await this.cryptoManager.isPasswordAuthSetup();
+        
+        // If no auth setup, need to set it up
+        if (!hasAuth) {
+            return true;
+        }
+        
+        // If auth is set up, check if we need to authenticate
+        return !this.cryptoManager.isAuthenticated();
     }
 
-    showAuthenticationModal() {
+    async showAuthenticationModal() {
         const modal = document.getElementById("authModal");
         if (!modal) return;
 
         // Show appropriate sections
-        const systemSection = document.getElementById("systemSection");
         const passwordSection = document.getElementById("passwordSection");
         const setupSection = document.getElementById("setupSection");
         
         // Check if this is first time setup
-        const hasAuth = localStorage.getItem('twinkey_has_auth');
-        const hasSystemAuth = this.cryptoManager.isSystemAuthSetup();
+        const hasAuth = await this.cryptoManager.isPasswordAuthSetup();
         const isFirstTime = !hasAuth;
         
         if (isFirstTime) {
             // First time setup - show setup options
             setupSection.classList.remove('d-none');
             passwordSection.classList.add('d-none');
-            systemSection.classList.add('d-none');
         } else {
-            // Normal authentication - show auth options
+            // Normal authentication - show password entry
             setupSection.classList.add('d-none');
             passwordSection.classList.remove('d-none');
-            
-            if (hasSystemAuth) {
-                systemSection.classList.remove('d-none');
-            } else {
-                systemSection.classList.add('d-none');
-            }
         }
 
         modal.classList.add('show');
@@ -1323,26 +1321,6 @@ class PopupManager {
 
     setupAuthEventListeners() {
         console.log("Setting up auth event listeners...");
-        
-        // System auth button
-        const systemAuthBtn = document.getElementById("systemAuthBtn");
-        if (systemAuthBtn) {
-            console.log("System auth button found");
-            systemAuthBtn.onclick = () => {
-                console.log("System auth button clicked!");
-                this.authenticateWithSystem();
-            };
-        }
-
-        // Setup system button
-        const setupSystemBtn = document.getElementById("setupSystemBtn");
-        if (setupSystemBtn) {
-            console.log("Setup system button found");
-            setupSystemBtn.onclick = () => {
-                console.log("Setup system button clicked!");
-                this.setupSystemAuth();
-            };
-        }
 
         // Password auth button
         const passwordAuthBtn = document.getElementById("passwordAuthBtn");
@@ -1370,6 +1348,16 @@ class PopupManager {
             masterPasswordInput.onkeypress = (e) => {
                 if (e.key === "Enter") {
                     this.authenticateWithPassword();
+                }
+            };
+        }
+        
+        // Enter key for setup password
+        const newPasswordInput = document.getElementById("newMasterPassword");
+        if (newPasswordInput) {
+            newPasswordInput.onkeypress = (e) => {
+                if (e.key === "Enter") {
+                    this.setupPasswordAuth();
                 }
             };
         }
@@ -1405,23 +1393,28 @@ class PopupManager {
         const password = passwordInput.value.trim();
         
         if (!password) {
-            this.showToast("Please enter your master password", "error");
+            this.showToast("Please enter your PIN/password", "error");
             return;
         }
         
         try {
-            const success = await this.cryptoManager.generateEncryptionKey(password);
+            const success = await this.cryptoManager.authenticateWithPassword(password);
             if (success) {
                 this.isAuthenticated = true;
                 this.hideAuthenticationModal();
                 await this.completeInitialization();
                 passwordInput.value = '';
+                this.showToast("Authentication successful!", "success");
             } else {
-                this.showToast("Invalid master password", "error");
+                this.showToast("Invalid PIN/password", "error");
+                passwordInput.value = '';
+                passwordInput.focus();
             }
         } catch (error) {
             console.error("Password auth error:", error);
             this.showToast("Authentication failed", "error");
+            passwordInput.value = '';
+            passwordInput.focus();
         }
     }
 
@@ -1448,37 +1441,37 @@ class PopupManager {
 
     async setupPasswordAuth() {
         const newPassword = document.getElementById("newMasterPassword").value.trim();
-        const confirmPassword = document.getElementById("confirmMasterPassword").value.trim();
         
-        if (!newPassword || !confirmPassword) {
-            this.showToast("Please fill in all password fields", "error");
+        if (!newPassword) {
+            this.showToast("Please enter a PIN or password", "error");
             return;
         }
         
-        if (newPassword !== confirmPassword) {
-            this.showToast("Passwords do not match", "error");
-            return;
-        }
-        
-        if (newPassword.length < 6) {
-            this.showToast("Password must be at least 6 characters", "error");
+        if (newPassword.length < 3) {
+            this.showToast("PIN/Password must be at least 3 characters", "error");
             return;
         }
         
         try {
             const success = await this.cryptoManager.generateEncryptionKey(newPassword);
             if (success) {
-                localStorage.setItem('twinkey_has_auth', 'true');
+                // Mark that auth is set up using extension storage
+                if (typeof chrome !== 'undefined' && chrome.storage) {
+                    await chrome.storage.local.set({ 'twinkey_has_auth': 'true' });
+                } else {
+                    localStorage.setItem('twinkey_has_auth', 'true');
+                }
+                
                 this.isAuthenticated = true;
                 this.hideAuthenticationModal();
                 await this.completeInitialization();
-                this.showToast("Master password setup successfully!", "success");
+                this.showToast("Authentication setup successfully!", "success");
             } else {
-                this.showToast("Failed to setup master password", "error");
+                this.showToast("Failed to setup authentication", "error");
             }
         } catch (error) {
             console.error("Password setup error:", error);
-            this.showToast("Failed to setup master password", "error");
+            this.showToast("Failed to setup authentication", "error");
         }
     }
 

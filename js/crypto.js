@@ -21,46 +21,146 @@ class CryptoManager {
     async generateEncryptionKey(password = null) {
         try {
             if (password) {
-                // Use password-based key derivation
-                const encoder = new TextEncoder();
-                const keyMaterial = await window.crypto.subtle.importKey(
-                    'raw',
-                    encoder.encode(password),
-                    'PBKDF2',
-                    false,
-                    ['deriveBits', 'deriveKey']
-                );
-                
-                const salt = new Uint8Array(16);
-                window.crypto.getRandomValues(salt);
-                
-                this.encryptionKey = await window.crypto.subtle.deriveKey(
-                    {
-                        name: 'PBKDF2',
-                        salt: salt,
-                        iterations: 100000,
-                        hash: 'SHA-256'
-                    },
-                    keyMaterial,
-                    { name: 'AES-GCM', length: 256 },
-                    false,
-                    ['encrypt', 'decrypt']
-                );
-                
-                // Store salt for later use
-                localStorage.setItem('twinkey_salt', Array.from(salt).join(','));
-                return true;
+                return await this.setupPasswordAuth(password);
             }
             
-            // Try system authentication (our simplified method)
+            // Try authenticating with existing password
+            return await this.authenticateWithPassword();
+        } catch (error) {
+            console.error("Error generating encryption key:", error);
+            return false;
+        }
+    }
+
+    /**
+     * Setup password authentication with verification token
+     */
+    async setupPasswordAuth(password) {
+        try {
+            // Generate random verification token
+            const verificationToken = crypto.randomUUID();
+            
+            // Create encryption key from password
+            const encoder = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            const salt = new Uint8Array(16);
+            window.crypto.getRandomValues(salt);
+            
+            this.encryptionKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+            
+            // Encrypt the verification token with the password
+            const encryptedToken = await this.encrypt(verificationToken);
+            
+            // Store salt and encrypted token for verification
+            const isExtension = typeof chrome !== 'undefined' && chrome.storage;
+            if (isExtension) {
+                await chrome.storage.local.set({
+                    'twinkey_salt': Array.from(salt).join(','),
+                    'twinkey_verify_token': encryptedToken,
+                    'twinkey_verify_plain': verificationToken
+                });
+            } else {
+                localStorage.setItem('twinkey_salt', Array.from(salt).join(','));
+                localStorage.setItem('twinkey_verify_token', encryptedToken);
+                localStorage.setItem('twinkey_verify_plain', verificationToken);
+            }
+            
+            return true;
+        } catch (error) {
+            console.error("Error setting up password auth:", error);
+            return false;
+        }
+    }
+
+    /**
+     * Authenticate with password by verifying decryption
+     */
+    async authenticateWithPassword(password) {
+        try {
+            // Get stored salt and verification token
+            let saltStr, encryptedToken, expectedToken;
+            
+            const isExtension = typeof chrome !== 'undefined' && chrome.storage;
+            if (isExtension) {
+                const result = await chrome.storage.local.get([
+                    'twinkey_salt', 
+                    'twinkey_verify_token', 
+                    'twinkey_verify_plain'
+                ]);
+                saltStr = result.twinkey_salt;
+                encryptedToken = result.twinkey_verify_token;
+                expectedToken = result.twinkey_verify_plain;
+            } else {
+                saltStr = localStorage.getItem('twinkey_salt');
+                encryptedToken = localStorage.getItem('twinkey_verify_token');
+                expectedToken = localStorage.getItem('twinkey_verify_plain');
+            }
+            
+            if (!saltStr || !encryptedToken || !expectedToken) {
+                throw new Error("No authentication data found");
+            }
+            
+            // Recreate encryption key from password
+            const salt = new Uint8Array(saltStr.split(',').map(x => parseInt(x)));
+            const encoder = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                'raw',
+                encoder.encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            this.encryptionKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+            
+            // Try to decrypt the verification token
             try {
-                return await this.authenticateWithSystem();
-            } catch (systemError) {
-                console.log("System auth failed:", systemError.message);
+                const decryptedToken = await this.decrypt(encryptedToken);
+                
+                // Verify the decrypted token matches the expected token
+                if (decryptedToken === expectedToken) {
+                    return true;
+                } else {
+                    this.encryptionKey = null;
+                    return false;
+                }
+            } catch (decryptError) {
+                // Decryption failed = wrong password
+                this.encryptionKey = null;
                 return false;
             }
         } catch (error) {
-            console.error("Error generating encryption key:", error);
+            console.error("Error authenticating with password:", error);
+            this.encryptionKey = null;
             return false;
         }
     }
@@ -136,10 +236,16 @@ class CryptoManager {
     }
 
     /**
-     * Generate system-specific key data
+     * Generate system-specific key data with user verification
      */
     async generateSystemKey() {
-        // Use browser fingerprint + request user verification
+        // Request user's system password
+        const password = prompt("Enter your system/computer password for secure authentication:");
+        if (!password) {
+            throw new Error("Password required for authentication");
+        }
+        
+        // Use browser fingerprint + user password
         const fingerprint = [
             navigator.userAgent,
             navigator.platform,
@@ -149,13 +255,8 @@ class CryptoManager {
             navigator.hardwareConcurrency || 4
         ].join('|');
         
-        // Simple user verification - they need to confirm
-        const confirmed = confirm("This will set up secure authentication using your system. Click OK to continue.");
-        if (!confirmed) {
-            throw new Error("User cancelled authentication setup");
-        }
-        
-        return fingerprint;
+        // Combine fingerprint with user password for stronger security
+        return fingerprint + '|' + password;
     }
 
     /**
@@ -170,13 +271,7 @@ class CryptoManager {
                 throw new Error("System authentication not set up");
             }
             
-            // Ask user to confirm their identity
-            const confirmed = confirm("Please confirm your identity to access your OTP codes.");
-            if (!confirmed) {
-                throw new Error("Authentication cancelled");
-            }
-            
-            // Generate the same key as during setup
+            // Request the same password used during setup
             const keyData = await this.generateSystemKey();
             
             const encoder = new TextEncoder();
@@ -400,8 +495,27 @@ class CryptoManager {
     /**
      * Check if system auth is set up
      */
-    isSystemAuthSetup() {
-        return !!localStorage.getItem('twinkey_system_auth');
+    async isSystemAuthSetup() {
+        const isExtension = typeof chrome !== 'undefined' && chrome.storage;
+        if (isExtension) {
+            const result = await chrome.storage.local.get('twinkey_system_auth');
+            return !!result.twinkey_system_auth;
+        } else {
+            return !!localStorage.getItem('twinkey_system_auth');
+        }
+    }
+
+    /**
+     * Check if password auth is set up
+     */
+    async isPasswordAuthSetup() {
+        const isExtension = typeof chrome !== 'undefined' && chrome.storage;
+        if (isExtension) {
+            const result = await chrome.storage.local.get('twinkey_verify_token');
+            return !!result.twinkey_verify_token;
+        } else {
+            return !!localStorage.getItem('twinkey_verify_token');
+        }
     }
 
     /**

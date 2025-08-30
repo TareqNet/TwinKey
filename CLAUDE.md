@@ -4,149 +4,173 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a multilingual OTP (One-Time Password) manager available both as a web application and Chrome browser extension. It provides a complete TOTP authentication system with folder organization, search capabilities, and supports multiple languages with full RTL support for Arabic.
+This is a secure Chrome Extension OTP (One-Time Password) manager built with vanilla HTML, CSS, and JavaScript. It provides a complete TOTP authentication system with advanced encryption, folder organization, drag-and-drop reordering, and comprehensive security features.
 
 ## Development Commands
 
-### Web Application
-Since this is a client-side web application, no build tools are required:
+Since this is a Chrome extension, no build tools are required:
 
 ```bash
-# Serve locally with Python
+# Load extension in Chrome
+1. Open chrome://extensions/
+2. Enable "Developer mode"
+3. Click "Load unpacked"
+4. Select the otp-ui directory
+
+# For local development/testing
 python -m http.server 8000
 # or with Node.js
 npx http-server -p 8000
-
-# Open in browser
-open http://localhost:8000
-```
-
-### Chrome Extension
-To test the Chrome extension:
-
-```bash
-# Load as unpacked extension in Chrome
-# 1. Open chrome://extensions/
-# 2. Enable "Developer mode"
-# 3. Click "Load unpacked" and select this directory
 ```
 
 ## Architecture Overview
 
-**Dual-Platform Architecture:**
-- Pure client-side application (no backend required)
-- Data stored in browser's localStorage (web) or chrome.storage (extension)
-- Bootstrap 5 RTL for responsive Arabic UI
+**Chrome Extension Architecture (Manifest V3):**
+- Client-side extension with popup interface
+- Data stored in Chrome Extension Storage (chrome.storage.local)
+- Advanced AES-256-GCM encryption for all secrets
 - Modular JavaScript architecture with separation of concerns
 
 **Core Components:**
-1. **I18nManager** (`js/i18n.js`): Internationalization system with RTL support and dynamic language switching
-2. **TOTPGenerator** (`js/totp.js`): RFC 6238 compliant TOTP implementation with Base32 decoding and SHA-1 HMAC
-3. **StorageManager** (`js/storage.js`): Unified storage abstraction supporting both localStorage and chrome.storage APIs
-4. **UIController** (`js/ui.js`): DOM manipulation for web application (full interface)
-5. **PopupManager** (`js/popup.js`): Compact popup interface for Chrome extension
-6. **OTPManager** (`js/app.js`): Main web application controller
-7. **Background Script** (`background.js`): Chrome extension service worker
+1. **CryptoManager** (`js/crypto.js`): AES-256-GCM encryption, PBKDF2 key derivation, verification token system
+2. **StorageManager** (`js/storage.js`): Chrome storage abstraction with encryption integration
+3. **PopupManager** (`js/popup.js`): Main application controller, authentication flow, UI management
+4. **TOTPGenerator** (`js/totp.js`): RFC 6238 compliant TOTP implementation with Base32 decoding
 
-**Key Features:**
-- **Multi-language support**: English and Arabic with RTL layout
-- **Dynamic language switching**: Toggle between languages with UI updates
-- Add/edit/delete OTP accounts with service categorization
-- Folder-based organization system  
-- Real-time search and filtering
-- Auto-refreshing OTP codes with visual countdown timers
-- One-click copy functionality
-- Responsive design for mobile and desktop
-- Chrome extension popup interface (400x600px)
-- Context menu integration
-- Extension badge showing account count
+**Security Features:**
+- PIN/Password authentication with verification token system
+- All OTP secrets encrypted with user's key
+- No password storage (only encrypted verification tokens)
+- Chrome Extension Storage isolation (not accessible by web pages)
 
 ## Key Directories and Files
 
 ```
 otp-ui/
-├── index.html              # Main web application (Arabic RTL)
-├── popup.html              # Chrome extension popup interface
-├── manifest.json           # Chrome extension manifest
-├── background.js           # Extension service worker
-├── css/
-│   ├── styles.css         # Main application styles
-│   └── popup.css          # Extension popup styles
+├── manifest.json           # Chrome Extension Manifest V3
+├── popup.html             # Main popup interface (850px width)
+├── css/popup.css          # Extension-optimized styling with modal CSS
 ├── js/
-│   ├── i18n.js           # Internationalization manager
-│   ├── totp.js           # TOTP algorithm implementation
-│   ├── storage.js        # Unified storage (localStorage + chrome.storage)
-│   ├── ui.js             # Web application UI controller
-│   ├── popup.js          # Extension popup controller
-│   └── app.js            # Main web application entry point
-├── locales/
-│   ├── en.json           # English translations
-│   └── ar.json           # Arabic translations
-├── icons/
-│   ├── icon16.png        # Extension toolbar icon
-│   ├── icon48.png        # Extension management icon
-│   └── icon128.png       # Chrome Web Store icon
-└── docs/
-    ├── FEATURE_TEMPLATE.md     # Documentation template
-    ├── INTERNATIONALIZATION.md # i18n implementation guide
-    ├── EXTENSION_INSTALLATION.md # Chrome extension setup
-    └── history/                # Historical documentation
+│   ├── crypto.js          # Encryption & authentication system
+│   ├── storage.js         # Chrome storage with encryption integration
+│   ├── popup.js           # Main popup controller & authentication
+│   ├── totp.js            # RFC 6238 TOTP implementation
+│   ├── bootstrap-minimal.js # Custom Bootstrap components
+│   ├── i18n.js            # Internationalization framework
+│   └── background.js      # Extension background script
+├── PROJECT_MEMORY.md      # Development timeline and solutions
+├── FEATURES.md           # Complete feature documentation
+└── CLAUDE.md             # This development guide
 ```
 
 ## Development Workflow
 
 **Adding New Features:**
-1. Update `StorageManager` for new data structures (handles both localStorage and chrome.storage)
-2. Implement business logic in appropriate class
-3. Add UI components in `UIController` (web) and/or `PopupManager` (extension)
-4. Update forms and event handlers as needed
-5. Test in both web and extension environments
+1. Update `CryptoManager` if encryption changes needed
+2. Update `StorageManager` for new data structures
+3. Implement UI logic in `PopupManager`
+4. Update popup.html for new UI elements
+5. Test authentication flow and data persistence
 
-**Testing:**
-
-*Web Application:*
-- Use dev console: `devTools.generateTestAccounts(5)`
-- Sample Base32 secret: `JBSWY3DPEHPK3PXP`
-- Clear test data: `devTools.clearTestData()`
-
-*Chrome Extension:*
-- Load unpacked extension in chrome://extensions/
-- Test popup functionality
-- Verify chrome.storage persistence
-- Check background script console for errors
+**Testing Workflow:**
+1. Load extension in Chrome
+2. Test authentication setup and verification
+3. Add test accounts with various services
+4. Test drag-and-drop, folders, export/import
+5. Verify encryption by checking chrome.storage.local content
 
 ## Important Implementation Details
 
-**TOTP Algorithm:**
-- Implements RFC 6238 standard with 30-second time step
-- Custom Base32 decoder and SHA-1 HMAC implementation
-- No external cryptography dependencies
+**Security Architecture:**
+- **Verification Token System**: Random UUID encrypted with user PIN for authentication verification
+- **AES-256-GCM**: All secrets encrypted with user-derived key
+- **PBKDF2**: 100,000 iterations for key derivation
+- **No Password Storage**: Only verification tokens stored, never actual passwords
+
+**Authentication Flow:**
+1. **Setup**: User creates PIN → Generate random token → Encrypt token → Store encrypted + plain tokens
+2. **Login**: User enters PIN → Recreate key → Decrypt token → Verify match → Grant access
+3. **Wrong Password**: Decryption fails → Access denied → Clear input
 
 **Data Storage:**
-- Web app: localStorage
-- Extension: chrome.storage.local (synced across browser sessions)
-- Unified StorageManager API handles both storage types automatically
-- Export/import functionality for data portability  
-- Automatic cleanup and validation
+- Primary: `chrome.storage.local` (secure, extension-isolated)
+- Fallback: `localStorage` (development environments)
+- All secrets encrypted before storage
+- Verification tokens for authentication
 
-**Security Notes:**
-- Secrets stored locally only (localStorage/chrome.storage)
-- No data transmission to external servers
-- Base32 secret validation on input
-- Chrome extension permissions: "storage" and "activeTab" only
+**Drag & Drop System:**
+- Container-based event delegation
+- Visual drop zones with index-based positioning
+- Smooth animations and visual feedback
+- Handles all edge cases (first, last, middle positions)
 
-**UI Patterns:**
-- Bootstrap modals for forms (web app)
-- Compact popup forms (extension)
-- Toast notifications for user feedback
-- Real-time OTP updates with visual progress indicators
-- Responsive Arabic RTL layout
-- Extension-specific: 400px width popup constraint
+## Chrome Extension Specific Notes
 
-## Development Tools
+**Manifest V3 Compliance:**
+- Uses chrome.storage.local for secure data persistence
+- Minimal background script for service worker
+- Popup-based interface optimized for extension constraints
+- No external network requests (fully offline)
 
-Available in browser console when running locally:
-- `window.app`: Main application instance
-- `window.devTools`: Development utilities
-- `devTools.generateTestAccounts(n)`: Create test data
-- `devTools.showStats()`: Display app statistics
+**Security Limitations:**
+- WebAuthn API not available in extension context
+- System password verification not possible
+- Solution: Custom PIN/password with verification token system
+
+**Storage Strategy:**
+- `chrome.storage.local` preferred over `localStorage`
+- Extension storage isolated from web page access
+- Automatic fallback handling for development
+
+## UI Patterns & Components
+
+**Custom Bootstrap Implementation:**
+- Minimal Bootstrap components (Modal, Toast, Dropdown)
+- Extension-optimized CSS without full Bootstrap
+- Custom modal system with backdrop and escape handling
+
+**Visual Feedback:**
+- Toast notifications for all operations
+- Drag preview with visual styling
+- Real-time TOTP countdown timers
+- Copy success animations
+
+**Responsive Design:**
+- 850px popup width for optimal visibility
+- Compact account cards for maximum density
+- Sidebar folder navigation
+- Mobile-friendly touch targets
+
+## Development Best Practices
+
+**Security:**
+- Never store passwords in plain text
+- Always encrypt secrets before storage
+- Use verification tokens for authentication
+- Clear sensitive data from memory after use
+
+**Performance:**
+- Use event delegation for dynamic content
+- Minimize DOM manipulation
+- Async/await for all storage operations
+- Proper error handling with user feedback
+
+**Maintenance:**
+- Comprehensive error logging
+- Clear separation of concerns
+- Documented public methods
+- Future-ready architecture for extensibility
+
+## Troubleshooting
+
+**Common Issues:**
+1. **Authentication fails**: Check verification token encryption/decryption
+2. **Drag-drop not working**: Verify event delegation setup
+3. **Storage errors**: Confirm chrome.storage permissions in manifest
+4. **Modal not showing**: Check CSS modal styles and Bootstrap components
+
+**Debug Tools:**
+- Chrome DevTools for extension debugging
+- Console logging for crypto operations
+- Storage inspection in chrome://extensions
+- Network tab should show no external requests
