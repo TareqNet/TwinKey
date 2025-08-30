@@ -235,6 +235,62 @@
         </div>
     </div>
 
+    <!-- Authentication Modal -->
+    <div class="modal" id="authModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Authenticate to Access Secrets</h5>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-4">
+                        <i class="bi bi-shield-lock display-4 text-primary"></i>
+                        <p class="mt-2">Your OTP secrets are encrypted for security.</p>
+                    </div>
+                    
+                    <!-- Password Auth Section -->
+                    <div id="passwordSection">
+                        <div class="mb-3">
+                            <label for="masterPassword" class="form-label">Enter PIN/Password</label>
+                            <input type="password" class="form-control" id="masterPassword" placeholder="Enter your PIN or password" maxlength="20">
+                        </div>
+                        <button type="button" class="btn btn-success w-100 mb-2" id="passwordAuthBtn">
+                            <i class="bi bi-unlock me-2"></i>
+                            Unlock
+                        </button>
+                    </div>
+                    
+                    <!-- First Time Setup -->
+                    <div id="setupSection" class="d-none">
+                        <div class="alert alert-info">
+                            <strong>First Time Setup</strong><br>
+                            Choose how you want to secure your OTP secrets:
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="newMasterPassword" class="form-label">Create PIN/Password</label>
+                            <input type="password" class="form-control mb-2" id="newMasterPassword" placeholder="Enter a 4-8 digit PIN or password" maxlength="20">
+                            <div class="small text-muted">
+                                Use a simple PIN (like 1234) or short password for quick access
+                            </div>
+                        </div>
+                        
+                        <button type="button" class="btn btn-success w-100" id="setupPasswordBtn">
+                            <i class="bi bi-lock me-2"></i>
+                            Setup Authentication
+                        </button>
+                    </div>
+                    
+                    <div class="mt-3 text-center">
+                        <small class="text-muted">
+                            Your data is encrypted locally and never sent to any server.
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div class="modal" id="settingsModal" tabindex="-1">
         <div class="modal-dialog">
@@ -277,7 +333,7 @@
                     </div>
 
                     <!-- Statistics Section -->
-                    <div class="mb-3">
+                    <div class="mb-4">
                         <h6 class="mb-3">
                             <i class="bi bi-graph-up me-2"></i>
                             Statistics
@@ -294,6 +350,37 @@
                             <div class="col-4">
                                 <div class="small text-muted">Storage</div>
                                 <div class="fw-bold" id="statsStorage">0 KB</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- About Section -->
+                    <div class="mb-3">
+                        <h6 class="mb-3">
+                            <i class="bi bi-info-circle me-2"></i>
+                            About Twin Key
+                        </h6>
+                        <div class="small text-muted">
+                            <div class="mb-2">
+                                <strong>Version:</strong> 1.0.0
+                            </div>
+                            <div class="mb-2">
+                                <strong>Developer:</strong> Tareq Nassry
+                            </div>
+                            <div class="mb-2">
+                                <strong>Email:</strong> 
+                                <a href="mailto:tareq@tareq.website" class="text-decoration-none" target="_blank">
+                                    tareq@tareq.website
+                                </a>
+                            </div>
+                            <div class="mb-2">
+                                <strong>GitHub:</strong> 
+                                <a href="https://github.com/TareqNet/TwinKey" class="text-decoration-none" target="_blank">
+                                    TareqNet/TwinKey
+                                </a>
+                            </div>
+                            <div class="text-center mt-3">
+                                <small>🔐 Secure • 🚀 Fast • 🛡️ Private</small>
                             </div>
                         </div>
                     </div>
@@ -318,6 +405,7 @@
     <script src="js/bootstrap-minimal.js"></script>
     <script src="js/i18n.js"></script>
     <script src="js/totp.js"></script>
+    <script src="js/crypto.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/popup.js"></script>
 </body>

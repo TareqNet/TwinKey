@@ -1,6 +1,7 @@
 class PopupManager {
     constructor() {
         this.storageManager = new StorageManager();
+        this.cryptoManager = new CryptoManager();
         this.totpGenerator = null;
         this.otpUpdater = null;
         this.accounts = [];
@@ -11,6 +12,8 @@ class PopupManager {
         this.draggedElement = null;
         this.containerDragSetup = false;
         this.dropZonesVisible = false;
+        this.isAuthenticated = false;
+        this.pendingAccount = null;
         
         this.init();
     }
@@ -31,12 +34,24 @@ class PopupManager {
         // Initialize TOTP generator
         this.totpGenerator = new TOTPGenerator();
         
-        await this.loadData();
-        this.setupEventListeners();
-        await this.renderFolders();
-        await this.renderAccounts();
-        this.startOTPUpdater();
-        this.setupLanguageSelector();
+        // Initialize crypto manager
+        await this.storageManager.initializeCrypto(this.cryptoManager);
+        
+        // Enable encryption by default for new accounts
+        this.storageManager.isEncryptionEnabled = true;
+        
+        // Check if authentication is required
+        const needsAuth = await this.checkAuthenticationRequired();
+        if (needsAuth) {
+            this.showAuthenticationModal();
+        } else {
+            await this.loadData();
+            this.setupEventListeners();
+            await this.renderFolders();
+            await this.renderAccounts();
+            this.startOTPUpdater();
+            this.setupLanguageSelector();
+        }
     }
 
     async loadData() {
@@ -187,6 +202,7 @@ class PopupManager {
             this.showSettingsModal();
         });
 
+
         // Language change listener
         document.addEventListener('languageChanged', async () => {
             await this.renderAccounts(); // Re-render to apply translations
@@ -262,6 +278,7 @@ class PopupManager {
             this.showToast(window.i18n ? window.i18n.t('error_invalid_secret') : 'Invalid secret key', "error");
             return;
         }
+
 
         try {
             const account = {
@@ -436,7 +453,7 @@ class PopupManager {
     }
 
     async renderAccountCard(account) {
-        const otp = await this.generateOTP(account.secret);
+        const otp = await this.generateOTP(account.id);
         const timeLeft = this.getTimeLeft();
         const timerClass = timeLeft <= 10 ? "danger" : timeLeft <= 20 ? "warning" : "";
         
@@ -737,8 +754,14 @@ class PopupManager {
         this.filterAndSortAccounts();
     }
 
-    async generateOTP(secret) {
+    async generateOTP(accountId) {
         try {
+            // Get decrypted secret
+            const secret = await this.storageManager.getDecryptedSecret(accountId);
+            if (!secret) {
+                return "🔒LOCKED";
+            }
+
             if (this.totpGenerator) {
                 const result = this.totpGenerator.generate(secret);
                 // Handle both sync and async results
@@ -761,12 +784,12 @@ class PopupManager {
             }
         } catch (error) {
             console.error("Error generating OTP:", error);
-            return "------";
+            return "❌ERROR";
         }
     }
 
     formatOTP(otp) {
-        if (otp === "------") return otp;
+        if (otp === "🔒LOCKED" || otp === "❌ERROR" || otp === "------") return otp;
         return otp.replace(/(\d{3})(\d{3})/, "$1 $2");
     }
 
@@ -804,7 +827,7 @@ class PopupManager {
                 const account = this.accounts.find(acc => acc.id === accountId);
                 
                 if (account) {
-                    const newOTP = await this.generateOTP(account.secret);
+                    const newOTP = await this.generateOTP(account.id);
                     element.textContent = this.formatOTP(newOTP);
                     element.setAttribute("data-otp", newOTP);
                 }
@@ -815,7 +838,7 @@ class PopupManager {
     }
 
     async copyOTP(account) {
-        const otp = await this.generateOTP(account.secret);
+        const otp = await this.generateOTP(account.id);
         
         try {
             await navigator.clipboard.writeText(otp);
@@ -844,7 +867,7 @@ class PopupManager {
         
         detailsTitle.textContent = account.name;
         
-        const otp = await this.generateOTP(account.secret);
+        const otp = await this.generateOTP(account.id);
         const lastUsed = account.lastUsed 
             ? (window.i18n ? window.i18n.formatDate(account.lastUsed) : new Date(account.lastUsed).toLocaleDateString())
             : (window.i18n ? window.i18n.t('never_used') : 'Never used');
@@ -1246,6 +1269,241 @@ class PopupManager {
         } catch (error) {
             console.error("Error deleting folder:", error);
             this.showToast("Error deleting folder", "error");
+        }
+    }
+
+    // ===============================
+    // Authentication Methods
+    // ===============================
+
+    async checkAuthenticationRequired() {
+        // Check if password auth is set up
+        const hasAuth = await this.cryptoManager.isPasswordAuthSetup();
+        
+        // If no auth setup, need to set it up
+        if (!hasAuth) {
+            return true;
+        }
+        
+        // If auth is set up, check if we need to authenticate
+        return !this.cryptoManager.isAuthenticated();
+    }
+
+    async showAuthenticationModal() {
+        const modal = document.getElementById("authModal");
+        if (!modal) return;
+
+        // Show appropriate sections
+        const passwordSection = document.getElementById("passwordSection");
+        const setupSection = document.getElementById("setupSection");
+        
+        // Check if this is first time setup
+        const hasAuth = await this.cryptoManager.isPasswordAuthSetup();
+        const isFirstTime = !hasAuth;
+        
+        if (isFirstTime) {
+            // First time setup - show setup options
+            setupSection.classList.remove('d-none');
+            passwordSection.classList.add('d-none');
+        } else {
+            // Normal authentication - show password entry
+            setupSection.classList.add('d-none');
+            passwordSection.classList.remove('d-none');
+        }
+
+        modal.classList.add('show');
+        modal.style.display = 'block';
+        document.body.classList.add('modal-open');
+        
+        // Setup event listeners after modal is shown
+        this.setupAuthEventListeners();
+    }
+
+    setupAuthEventListeners() {
+        console.log("Setting up auth event listeners...");
+
+        // Password auth button
+        const passwordAuthBtn = document.getElementById("passwordAuthBtn");
+        if (passwordAuthBtn) {
+            console.log("Password auth button found");
+            passwordAuthBtn.onclick = () => {
+                console.log("Password auth button clicked!");
+                this.authenticateWithPassword();
+            };
+        }
+
+        // Setup password button
+        const setupPasswordBtn = document.getElementById("setupPasswordBtn");
+        if (setupPasswordBtn) {
+            console.log("Setup password button found");
+            setupPasswordBtn.onclick = () => {
+                console.log("Setup password button clicked!");
+                this.setupPasswordAuth();
+            };
+        }
+
+        // Enter key for password
+        const masterPasswordInput = document.getElementById("masterPassword");
+        if (masterPasswordInput) {
+            masterPasswordInput.onkeypress = (e) => {
+                if (e.key === "Enter") {
+                    this.authenticateWithPassword();
+                }
+            };
+        }
+        
+        // Enter key for setup password
+        const newPasswordInput = document.getElementById("newMasterPassword");
+        if (newPasswordInput) {
+            newPasswordInput.onkeypress = (e) => {
+                if (e.key === "Enter") {
+                    this.setupPasswordAuth();
+                }
+            };
+        }
+    }
+
+    hideAuthenticationModal() {
+        const modal = document.getElementById("authModal");
+        if (modal) {
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    async authenticateWithSystem() {
+        try {
+            const success = await this.cryptoManager.generateEncryptionKey();
+            if (success) {
+                this.isAuthenticated = true;
+                this.hideAuthenticationModal();
+                await this.completeInitialization();
+            } else {
+                this.showToast("System authentication failed", "error");
+            }
+        } catch (error) {
+            console.error("System auth error:", error);
+            this.showToast("System authentication failed", "error");
+        }
+    }
+
+    async authenticateWithPassword() {
+        const passwordInput = document.getElementById("masterPassword");
+        const password = passwordInput.value.trim();
+        
+        if (!password) {
+            this.showToast("Please enter your PIN/password", "error");
+            return;
+        }
+        
+        try {
+            const success = await this.cryptoManager.authenticateWithPassword(password);
+            if (success) {
+                this.isAuthenticated = true;
+                this.hideAuthenticationModal();
+                await this.completeInitialization();
+                passwordInput.value = '';
+                this.showToast("Authentication successful!", "success");
+            } else {
+                this.showToast("Invalid PIN/password", "error");
+                passwordInput.value = '';
+                passwordInput.focus();
+            }
+        } catch (error) {
+            console.error("Password auth error:", error);
+            this.showToast("Authentication failed", "error");
+            passwordInput.value = '';
+            passwordInput.focus();
+        }
+    }
+
+    async setupSystemAuth() {
+        try {
+            console.log("Setting up system auth...");
+            const success = await this.cryptoManager.setupSystemAuth();
+            console.log("Setup result:", success);
+            
+            if (success) {
+                localStorage.setItem('twinkey_has_auth', 'true');
+                this.isAuthenticated = true;
+                this.hideAuthenticationModal();
+                await this.completeInitialization();
+                this.showToast("System authentication setup successfully!", "success");
+            } else {
+                this.showToast("Failed to setup system authentication", "error");
+            }
+        } catch (error) {
+            console.error("System setup error:", error);
+            this.showToast("Failed to setup system authentication: " + error.message, "error");
+        }
+    }
+
+    async setupPasswordAuth() {
+        const newPassword = document.getElementById("newMasterPassword").value.trim();
+        
+        if (!newPassword) {
+            this.showToast("Please enter a PIN or password", "error");
+            return;
+        }
+        
+        if (newPassword.length < 3) {
+            this.showToast("PIN/Password must be at least 3 characters", "error");
+            return;
+        }
+        
+        try {
+            const success = await this.cryptoManager.generateEncryptionKey(newPassword);
+            if (success) {
+                // Mark that auth is set up using extension storage
+                if (typeof chrome !== 'undefined' && chrome.storage) {
+                    await chrome.storage.local.set({ 'twinkey_has_auth': 'true' });
+                } else {
+                    localStorage.setItem('twinkey_has_auth', 'true');
+                }
+                
+                this.isAuthenticated = true;
+                this.hideAuthenticationModal();
+                await this.completeInitialization();
+                this.showToast("Authentication setup successfully!", "success");
+            } else {
+                this.showToast("Failed to setup authentication", "error");
+            }
+        } catch (error) {
+            console.error("Password setup error:", error);
+            this.showToast("Failed to setup authentication", "error");
+        }
+    }
+
+    async completeInitialization() {
+        await this.loadData();
+        this.setupEventListeners();
+        await this.renderFolders();
+        await this.renderAccounts();
+        this.startOTPUpdater();
+        this.setupLanguageSelector();
+
+        // Handle pending account if exists
+        if (this.pendingAccount) {
+            const account = {
+                id: this.generateId(),
+                ...this.pendingAccount,
+                createdAt: new Date().toISOString(),
+                lastUsed: null
+            };
+
+            const success = await this.storageManager.addAccount(account);
+            if (success) {
+                this.accounts.push(account);
+                this.filterAndSortAccounts();
+                await this.renderAccounts();
+                this.hideAddForm();
+                this.showToast("Account added successfully!", "success");
+            } else {
+                this.showToast("Failed to add account", "error");
+            }
+            
+            this.pendingAccount = null;
         }
     }
 
