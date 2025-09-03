@@ -1,4 +1,4 @@
-# Twin Key OTP Manager - Project Memory
+# Twin Key OTP Manager - Project Documentation Index
 
 ## Project Overview
 A secure Chrome extension for managing TOTP (Time-based One-Time Password) authentication codes with advanced encryption and user-friendly interface.
@@ -7,157 +7,155 @@ A secure Chrome extension for managing TOTP (Time-based One-Time Password) authe
 **Repository**: https://github.com/TareqNet/TwinKey  
 **License**: MIT
 
-## Development Timeline & Solutions
+## Documentation Structure
 
-### Phase 1: Initial Setup & Language Conversion
-**Problem**: Extension was bilingual (Arabic/English) with inconsistent language support
-**Solution**: 
-- Converted all Arabic text to English across all files
-- Moved `background.js` to `js/` folder for better organization
-- Updated manifest.json paths accordingly
+### Core Documentation
+- **CLAUDE.md** - Quick reference for development guidance (points to this file)
+- **PROJECT_MEMORY.md** - This file (complete project documentation and architecture)
 
-### Phase 2: UI/UX Improvements & Account Management
-**Problem**: Users wanted better account management and organization
-**Solution**:
-- Removed full-screen account details modal (replaced with dropdown)
-- Added dropdown options menu for each account (edit/delete/copy)
-- Implemented comprehensive folder/category system with sidebar navigation
-- Added sorting options (custom, name, service, date, last used)
+### Historical Development Timeline
 
-### Phase 3: Drag & Drop Implementation
-**Problem**: Users needed to reorder accounts easily
-**Issues Encountered**:
-- Drag & drop only worked when pressing grip icon, not full card
-- Elements disappeared during drag operations
-- Drop zones didn't hide after drag ended
-- Last card couldn't be dragged upward (insertion logic issues)
+**Detailed chronological documentation available in:** `docs/history/`
 
-**Solutions Applied**:
-- Implemented container-based drag & drop with event delegation
-- Added visual drop zones with index-based positioning
-- Fixed CSS opacity and z-index for dragged elements
-- Redesigned drop zone system to handle all positions correctly
-- Added visual feedback with borders, shadows, and animations
+**Development Phases Summary:**
+- **Phase 0** (2024-08-26): Project foundation and initial setup
+- **Phase 1** (2024-08-01): Language conversion and file reorganization  
+- **Phase 2** (2024-08-05): UI/UX improvements and folder system
+- **Phase 3** (2024-08-10): Drag & drop implementation
+- **Phase 4** (2024-08-15): Layout optimization (600px → 850px)
+- **Phase 5** (2024-08-18): Settings modal and data management
+- **Phase 6** (2024-08-20): Security implementation and encryption
+- **Phase 7** (2024-08-25): Storage system unification
 
-### Phase 4: Layout & Size Optimization  
-**Problem**: Users wanted to see more accounts in the popup
-**Solution**:
-- Increased popup width from 600px → 750px → 850px
-- Reduced account card sizes to fit more accounts
-- Optimized layout spacing and typography
+Each phase is documented in detail with technical decisions, implementation steps, challenges faced, and lessons learned.
 
-### Phase 5: Settings & Data Management
-**Problem**: Users needed export/import functionality
-**Solution**:
-- Added settings modal with gear icon in header
-- Implemented export functionality (downloads JSON with timestamp)
-- Implemented import functionality (uploads and validates JSON)
-- Added storage statistics display (accounts, folders, storage size)
-- Fixed modal display issues with custom CSS
+### Developer Resources
+- **[docs/history/template.md](docs/history/template.md)** - Template for historical change documentation
 
-### Phase 6: Security & Encryption Implementation
-**Problem**: Need to encrypt OTP secrets for security
-**Challenges**:
-- WebAuthn API not supported in Chrome extensions
-- System password verification not possible from browser context
-- Need user-friendly authentication without compromising security
-
-**Solution Iterations**:
-1. **Initial WebAuthn Attempt**: Failed due to Chrome extension limitations
-2. **System Password Approach**: Abandoned due to inability to verify actual system passwords
-3. **Final PIN/Password Solution**: Implemented secure verification token system
-
-**Final Security Implementation**:
-- **Verification Token System**: 
-  - Generates random UUID during setup
-  - Encrypts token with user's PIN/password
-  - Stores encrypted token + plain token for verification
-  - Authentication verified by successful decryption matching
-- **Encryption**: AES-256-GCM with PBKDF2 key derivation (100,000 iterations)
-- **Storage**: Unified Chrome Extension Storage for maximum security
-- **No Password Storage**: Only verification tokens stored, never actual passwords
-
-### Phase 7: Storage Unification & Optimization
-**Problem**: Mixed usage of localStorage and Chrome Extension Storage
-**Solution**:
-- Unified all storage to use `chrome.storage.local` (more secure for extensions)
-- Added fallback to `localStorage` for development environments
-- Updated all authentication and verification methods accordingly
-
-## Current Architecture
+## Current Architecture Overview
 
 ### Security Layer
 ```
-User PIN/Password → PBKDF2 → AES-256-GCM → Encrypted Secrets
+User PIN/Password → PBKDF2 (100k iterations) → AES-256-GCM → Encrypted Secrets
                      ↓
               Verification Token System
 ```
 
+### Core Components
+1. **CryptoManager** (`js/crypto.js`) - Encryption & authentication system
+2. **StorageManager** (`js/storage.js`) - Chrome storage with encryption integration  
+3. **PopupManager** (`js/popup.js`) - Main application controller & authentication
+4. **TOTPGenerator** (`js/totp.js`) - RFC 6238 compliant TOTP implementation
+
 ### File Structure
 ```
 otp-ui/
-├── manifest.json (v3)
-├── popup.html (Main UI)
-├── css/popup.css (Styling + Modal CSS)
+├── manifest.json           # Chrome Extension Manifest V3
+├── popup.html             # Main popup interface (850px width)
+├── css/popup.css          # Extension-optimized styling
 ├── js/
-│   ├── bootstrap-minimal.js (Custom Bootstrap components)
-│   ├── crypto.js (Encryption & Authentication)
-│   ├── storage.js (Data persistence)
-│   ├── totp.js (RFC 6238 TOTP implementation)
-│   ├── popup.js (Main application logic)
-│   ├── i18n.js (Internationalization)
-│   └── background.js (Extension background script)
+│   ├── crypto.js          # Encryption & authentication system
+│   ├── storage.js         # Chrome storage with encryption
+│   ├── popup.js           # Main popup controller
+│   ├── totp.js            # RFC 6238 TOTP implementation
+│   ├── bootstrap-minimal.js # Custom Bootstrap components
+│   ├── i18n.js            # Internationalization framework
+│   └── background.js      # Extension background script
+├── docs/
+│   └── history/           # Historical development documentation
+│       ├── template.md    # Template for new change documentation
+│       └── [YYYY-MM-DD]_phase[N]_[name].md # Individual phase docs
+├── PROJECT_MEMORY.md      # Complete project documentation
+└── CLAUDE.md             # Development guidance reference
 ```
-
-### Data Flow
-1. **Setup**: User creates PIN → Generate verification token → Encrypt & store
-2. **Authentication**: User enters PIN → Decrypt verification token → Verify match
-3. **Secret Storage**: All OTP secrets encrypted with user's key
-4. **TOTP Generation**: Decrypt secret → Generate TOTP → Display code
 
 ## Key Technical Decisions
 
-### 1. Authentication Method
-**Final Choice**: PIN/Password with verification token system
-**Rationale**: 
-- User-friendly (simple PIN like "1234" allowed)
-- Secure (no password storage, verification by decryption)
-- Compatible with Chrome extension limitations
+### Authentication Architecture
+- **Method**: PIN/Password with verification token system
+- **Rationale**: Balances security with usability within Chrome extension limitations
+- **Security**: AES-256-GCM encryption, PBKDF2 key derivation, no password storage
 
-### 2. Storage Strategy
-**Final Choice**: Chrome Extension Storage with localStorage fallback
-**Rationale**:
-- `chrome.storage.local` isolated from web pages (more secure)
-- localStorage fallback for development/testing
-- Consistent API across both storage types
+### Storage Strategy  
+- **Primary**: chrome.storage.local (secure, extension-isolated)
+- **Fallback**: localStorage (development environments only)
+- **Rationale**: Maximum security with development flexibility
 
-### 3. Drag & Drop Implementation
-**Final Choice**: Container-based event delegation with visual drop zones
-**Rationale**:
-- Better performance than individual element listeners
-- Visual feedback improves UX
-- Index-based positioning handles all edge cases
+### UI/UX Patterns
+- **Drag & Drop**: Container-based event delegation with visual feedback
+- **Layout**: 850px popup width for optimal visibility
+- **Organization**: Folder system with sidebar navigation
 
-## Lessons Learned
+## Development Workflow
 
-1. **Chrome Extension Limitations**: WebAuthn API restrictions led to custom auth solution
-2. **Event Delegation Benefits**: Container-based listeners more reliable than individual element listeners
-3. **Security vs Usability**: Verification token system balances both effectively
-4. **Storage Consistency**: Using single storage mechanism prevents data conflicts
-5. **Visual Feedback Importance**: Drop zones and animations significantly improve UX
+### Adding New Features
+1. Read relevant historical documentation for context
+2. Use `docs/history/template.md` for documenting the change
+3. Follow established patterns in core components
+4. Test authentication flow and data persistence
+5. Document the change chronologically in `docs/history/`
+
+### Documentation Standards
+- **Historical Changes**: Use template in `docs/history/template.md`
+- **Features**: Update feature sections in this file with new capabilities  
+- **Architecture**: Update this file for structural changes
+- **User Guides**: Update installation/usage sections in this file as needed
 
 ## Future Considerations
 
-1. **Biometric Support**: Investigate alternative biometric APIs for extensions
-2. **Cloud Sync**: Encrypted cloud backup functionality
+1. **Biometric Support**: Investigate alternative APIs for Chrome extensions
+2. **Cloud Sync**: Encrypted cloud backup functionality  
 3. **Mobile App**: Companion mobile application
-4. **Advanced Features**: QR code scanning, bulk import/export
-5. **Performance**: Optimize for large numbers of accounts (1000+)
+4. **Advanced Features**: QR code scanning, bulk operations
+5. **Performance**: Optimize for 1000+ accounts
 
-## Development Tools & Dependencies
+---
 
-- **Chrome Extension Manifest V3**
-- **Vanilla JavaScript** (no external frameworks)
-- **Web Crypto API** for encryption
-- **Bootstrap Icons** for UI icons
-- **Custom Bootstrap Components** (lightweight implementation)
+# Key Features Overview
+
+## Core Capabilities
+- **🔐 Security**: AES-256-GCM encryption, PIN/password authentication, local-only storage
+- **🎨 Interface**: 850px popup, Bootstrap components, drag & drop reordering
+- **📁 Organization**: Folders, search, multiple sorting options
+- **⚙️ Management**: Add/edit/delete accounts, import/export, settings modal
+- **🌐 Internationalization**: English/Arabic support with RTL layout
+- **🔄 TOTP**: RFC 6238 compliant, 30-second refresh, one-click copy
+
+---
+
+# Installation & Usage
+
+## Quick Setup
+1. Clone: `git clone https://github.com/TareqNet/TwinKey`
+2. Open Chrome → `chrome://extensions/` → Enable Developer mode
+3. Click "Load unpacked" → Select `otp-ui` directory
+4. Pin extension to toolbar for easy access
+
+## First Use
+1. Set up PIN/password (all secrets will be encrypted)
+2. Click "+" to add account (name, service, email, secret key)
+3. Copy OTP codes with one click, organize with folders
+
+---
+
+# Internationalization
+
+## Languages
+- **English** (en) - Default
+- **Arabic** (ar) - RTL support
+
+## Implementation
+- Files: `locales/en.json`, `locales/ar.json`
+- HTML: `data-i18n="key"` attributes
+- JavaScript: `window.i18n.t('key')`  
+- RTL: Automatic Bootstrap CSS switching
+
+---
+
+# Development Template
+
+Use `docs/history/template.md` for new feature documentation.
+
+---
+**Last Updated**: 2024-09-03  
+**Status**: Active Development
