@@ -197,6 +197,11 @@ class PopupManager {
             this.hideAccountDetails();
         });
 
+        // Open in tab button
+        document.getElementById("openInTabBtn").addEventListener("click", () => {
+            this.openInNewTab();
+        });
+
         // Settings button
         document.getElementById("settingsBtn").addEventListener("click", () => {
             this.showSettingsModal();
@@ -208,19 +213,35 @@ class PopupManager {
             await this.renderAccounts(); // Re-render to apply translations
         });
 
-        // Settings functionality
+        // Settings functionality - Export button now opens modal
         const exportBtn = document.getElementById("exportBtn");
         if (exportBtn) {
             exportBtn.addEventListener("click", () => {
-                this.exportData();
+                this.showExportOptionsModal();
             });
         }
+
+        // Export options modal listeners
+        const confirmExportBtn = document.getElementById("confirmExportBtn");
+        if (confirmExportBtn) {
+            confirmExportBtn.addEventListener("click", () => {
+                this.handleExport();
+            });
+        }
+
+        // Export type radio change listener
+        const exportTypeRadios = document.querySelectorAll('input[name="exportType"]');
+        exportTypeRadios.forEach(radio => {
+            radio.addEventListener("change", (e) => {
+                this.toggleExportPasswordSection(e.target.value === 'encrypted');
+            });
+        });
 
         const importFile = document.getElementById("importFile");
         const importBtn = document.getElementById("importBtn");
         if (importFile && importBtn) {
             importFile.addEventListener("change", (e) => {
-                importBtn.disabled = !e.target.files.length;
+                this.handleFileSelection(e);
             });
 
             importBtn.addEventListener("click", () => {
@@ -512,8 +533,9 @@ class PopupManager {
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/html', '');
                     
-                    // Show drop zones
+                    // Show drop zones and folder drop zones
                     this.showDropZones();
+                    this.showFolderDropZones();
                 }
             }
         });
@@ -526,6 +548,7 @@ class PopupManager {
                 
                 // Hide drop zones
                 this.hideDropZones();
+                this.hideFolderDropZones();
             }
         });
 
@@ -536,6 +559,7 @@ class PopupManager {
                 setTimeout(() => {
                     if (this.dropZonesVisible && !container.matches(':hover')) {
                         this.hideDropZones();
+                        this.hideFolderDropZones();
                         if (this.draggedElement) {
                             this.draggedElement.classList.remove('dragging');
                             this.draggedElement = null;
@@ -625,6 +649,59 @@ class PopupManager {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && this.dropZonesVisible) {
                 this.hideDropZones();
+                this.hideFolderDropZones();
+                if (this.draggedElement) {
+                    this.draggedElement.classList.remove('dragging');
+                    this.draggedElement = null;
+                }
+            }
+        });
+
+        // Setup folder drag and drop
+        this.setupFolderDragAndDrop();
+    }
+
+    setupFolderDragAndDrop() {
+        const foldersList = document.getElementById('foldersList');
+        if (!foldersList) return;
+
+        // Handle dragover on folders
+        foldersList.addEventListener('dragover', (e) => {
+            if (this.draggedElement) {
+                const folderItem = e.target.closest('.folder-item');
+                if (folderItem && folderItem.dataset.folderId !== 'all') {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                    this.highlightFolder(folderItem);
+                }
+            }
+        });
+
+        // Handle dragleave on folders
+        foldersList.addEventListener('dragleave', (e) => {
+            const folderItem = e.target.closest('.folder-item');
+            if (folderItem && !folderItem.contains(e.relatedTarget)) {
+                this.unhighlightFolder(folderItem);
+            }
+        });
+
+        // Handle drop on folders
+        foldersList.addEventListener('drop', (e) => {
+            const folderItem = e.target.closest('.folder-item');
+            if (this.draggedElement && folderItem) {
+                e.preventDefault();
+                
+                const targetFolderId = folderItem.dataset.folderId;
+                const accountId = this.draggedElement.dataset.accountId;
+                
+                // Don't allow drop on "all" folder
+                if (targetFolderId !== 'all') {
+                    this.moveAccountToFolder(accountId, targetFolderId);
+                }
+                
+                // Clean up
+                this.hideDropZones();
+                this.hideFolderDropZones();
                 if (this.draggedElement) {
                     this.draggedElement.classList.remove('dragging');
                     this.draggedElement = null;
@@ -731,6 +808,70 @@ class PopupManager {
 
     unhighlightDropZone(dropZone) {
         dropZone.classList.remove('drag-over');
+    }
+
+    showFolderDropZones() {
+        // Add visual indicator to all folders that they can accept drops
+        const folderItems = document.querySelectorAll('.folder-item[data-folder-id]:not([data-folder-id="all"])');
+        folderItems.forEach(folder => {
+            folder.classList.add('drag-target');
+        });
+    }
+
+    hideFolderDropZones() {
+        // Remove visual indicators from folders
+        const folderItems = document.querySelectorAll('.folder-item');
+        folderItems.forEach(folder => {
+            folder.classList.remove('drag-target', 'drag-over');
+        });
+    }
+
+    highlightFolder(folderItem) {
+        // Remove highlight from all other folders
+        document.querySelectorAll('.folder-item.drag-over').forEach(folder => {
+            if (folder !== folderItem) {
+                folder.classList.remove('drag-over');
+            }
+        });
+        
+        // Highlight current folder
+        folderItem.classList.add('drag-over');
+    }
+
+    unhighlightFolder(folderItem) {
+        folderItem.classList.remove('drag-over');
+    }
+
+    async moveAccountToFolder(accountId, targetFolderId) {
+        try {
+            // Update account folder
+            const success = await this.storageManager.updateAccount(accountId, { 
+                folderId: targetFolderId 
+            });
+            
+            if (success) {
+                // Update local account data
+                const account = this.accounts.find(acc => acc.id === accountId);
+                if (account) {
+                    account.folderId = targetFolderId;
+                }
+                
+                // Refresh UI
+                this.filterAndSortAccounts();
+                await this.renderFolders();
+                await this.renderAccounts();
+                
+                // Show success message
+                const targetFolder = this.folders.find(f => f.id === targetFolderId) || 
+                                   { name: targetFolderId === 'uncategorized' ? 'Uncategorized' : targetFolderId };
+                this.showToast(`Account moved to ${targetFolder.name}`, "success");
+            } else {
+                this.showToast("Failed to move account", "error");
+            }
+        } catch (error) {
+            console.error("Error moving account to folder:", error);
+            this.showToast("Error moving account", "error");
+        }
     }
 
     async updateAccountOrder() {
@@ -1125,6 +1266,11 @@ class PopupManager {
 
         // Update folder options in forms
         this.updateFolderOptions();
+        
+        // Setup folder drag and drop after rendering
+        setTimeout(() => {
+            this.setupFolderDragAndDrop();
+        }, 10);
     }
 
     updateCurrentFolderName() {
@@ -1508,6 +1654,38 @@ class PopupManager {
     }
 
     // ===============================
+    // UI Methods
+    // ===============================
+
+    openInNewTab() {
+        if (typeof chrome !== 'undefined' && chrome.windows) {
+            // Chrome extension environment - create a fixed-size window
+            const currentUrl = chrome.runtime.getURL('popup.html');
+            chrome.windows.create({
+                url: currentUrl,
+                type: 'popup',
+                width: 1100,
+                height: 850,
+                left: Math.round((screen.availWidth - 1100) / 2),
+                top: Math.round((screen.availHeight - 850) / 2),
+                focused: true
+            });
+        } else {
+            // Fallback for development environment
+            const width = 1100;
+            const height = 850;
+            const left = (screen.width - width) / 2;
+            const top = (screen.height - height) / 2;
+            
+            window.open(
+                'popup.html', 
+                'TwinKey', 
+                `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`
+            );
+        }
+    }
+
+    // ===============================
     // Settings Methods
     // ===============================
 
@@ -1530,20 +1708,71 @@ class PopupManager {
         }
     }
 
-    async exportData() {
+    showExportOptionsModal() {
+        const modal = document.getElementById("exportOptionsModal");
+        if (modal) {
+            // Reset form
+            document.getElementById("exportEncrypted").checked = true;
+            document.getElementById("exportUnencrypted").checked = false;
+            document.getElementById("exportPassword").value = "";
+            this.toggleExportPasswordSection(true);
+            
+            // Show modal
+            modal.classList.add('show');
+            modal.style.display = 'block';
+            document.body.classList.add('modal-open');
+        }
+    }
+
+    hideExportOptionsModal() {
+        const modal = document.getElementById("exportOptionsModal");
+        if (modal) {
+            modal.classList.remove('show');
+            modal.style.display = 'none';
+            document.body.classList.remove('modal-open');
+        }
+    }
+
+    toggleExportPasswordSection(show) {
+        const passwordSection = document.getElementById("exportPasswordSection");
+        if (passwordSection) {
+            if (show) {
+                passwordSection.classList.remove("d-none");
+            } else {
+                passwordSection.classList.add("d-none");
+            }
+        }
+    }
+
+    async handleExport() {
         try {
-            const data = await this.storageManager.exportData();
+            const exportType = document.querySelector('input[name="exportType"]:checked').value;
+            const exportPassword = document.getElementById("exportPassword").value;
+
+            // Validate password for encrypted export
+            if (exportType === 'encrypted') {
+                if (!exportPassword || exportPassword.length < 4) {
+                    this.showToast("Please enter a password (at least 4 characters)", "error");
+                    return;
+                }
+            }
+
+            // Export data with or without password
+            const password = exportType === 'encrypted' ? exportPassword : null;
+            const data = await this.storageManager.exportData(password);
+            
             if (!data) {
                 this.showToast("Error exporting data", "error");
                 return;
             }
 
-            // Create filename with current date
+            // Create filename with current date and encryption indicator
             const now = new Date();
             const dateStr = now.getFullYear() + '-' + 
                           String(now.getMonth() + 1).padStart(2, '0') + '-' + 
                           String(now.getDate()).padStart(2, '0');
-            const filename = `twinkey-backup-${dateStr}.json`;
+            const encryptedSuffix = exportType === 'encrypted' ? '-encrypted' : '';
+            const filename = `twinkey-backup-${dateStr}${encryptedSuffix}.json`;
 
             // Create download link
             const blob = new Blob([JSON.stringify(data, null, 2)], { 
@@ -1559,16 +1788,52 @@ class PopupManager {
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
 
-            this.showToast("Data exported successfully", "success");
+            // Hide modal and show success message
+            this.hideExportOptionsModal();
+            const message = exportType === 'encrypted' 
+                ? "Data exported successfully with password protection"
+                : "Data exported successfully without encryption";
+            this.showToast(message, "success");
+            
         } catch (error) {
             console.error("Error exporting data:", error);
             this.showToast("Error exporting data", "error");
         }
     }
 
+    async handleFileSelection(event) {
+        const fileInput = event.target;
+        const importBtn = document.getElementById("importBtn");
+        const importPasswordSection = document.getElementById("importPasswordSection");
+        
+        importBtn.disabled = !fileInput.files.length;
+        
+        if (fileInput.files.length > 0) {
+            try {
+                // Read and parse file to check if it's encrypted
+                const file = fileInput.files[0];
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                // Show/hide password section based on encryption
+                if (data.encrypted && data.encryptedData) {
+                    importPasswordSection.classList.remove("d-none");
+                } else {
+                    importPasswordSection.classList.add("d-none");
+                }
+            } catch (error) {
+                console.error("Error reading file:", error);
+                importPasswordSection.classList.add("d-none");
+            }
+        } else {
+            importPasswordSection.classList.add("d-none");
+        }
+    }
+
     async importData() {
         try {
             const fileInput = document.getElementById("importFile");
+            const importPasswordInput = document.getElementById("importPassword");
             const file = fileInput.files[0];
             
             if (!file) {
@@ -1580,8 +1845,17 @@ class PopupManager {
             const text = await file.text();
             const data = JSON.parse(text);
 
-            // Validate data structure
-            if (!data.accounts && !data.folders && !data.settings) {
+            // Check if file is encrypted and password is required
+            if (data.encrypted && data.encryptedData) {
+                const importPassword = importPasswordInput.value;
+                if (!importPassword) {
+                    this.showToast("Please enter the import password", "error");
+                    return;
+                }
+            }
+
+            // Validate data structure for unencrypted files
+            if (!data.encrypted && !data.accounts && !data.folders && !data.settings && !data.encryptedData) {
                 this.showToast("Invalid backup file format", "error");
                 return;
             }
@@ -1592,10 +1866,12 @@ class PopupManager {
                 return;
             }
 
-            // Import data
-            const success = await this.storageManager.importData(data);
+            // Import data with password if needed
+            const importPassword = data.encrypted ? importPasswordInput.value : null;
+            const success = await this.storageManager.importData(data, importPassword);
+            
             if (!success) {
-                this.showToast("Error importing data", "error");
+                this.showToast("Error importing data. Please check password or file format.", "error");
                 return;
             }
 
@@ -1607,12 +1883,18 @@ class PopupManager {
             // Close modal and clear file input
             this.hideSettingsModal();
             fileInput.value = '';
+            importPasswordInput.value = '';
             document.getElementById("importBtn").disabled = true;
+            document.getElementById("importPasswordSection").classList.add("d-none");
 
             this.showToast("Data imported successfully", "success");
         } catch (error) {
             console.error("Error importing data:", error);
-            this.showToast("Error importing data. Please check file format.", "error");
+            if (error.message.includes("Invalid password")) {
+                this.showToast("Invalid password or corrupted file", "error");
+            } else {
+                this.showToast("Error importing data. Please check file format.", "error");
+            }
         }
     }
 

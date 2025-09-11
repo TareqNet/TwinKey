@@ -6,7 +6,6 @@
 
 Before working on this project, you MUST read:
 - `PROJECT_MEMORY.md` - Complete development guide and project memory
-- `FEATURES.md` - Feature documentation
 
 ## Quick Reference
 

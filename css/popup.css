@@ -20,15 +20,20 @@
 }
 
 .modal-dialog {
-    max-width: 500px;
-    width: 90%;
-    margin: auto;
+    max-width: 100%;
+    width: 100%;
+    height: 100vh;
+    margin: 0;
+    max-height: 100vh;
 }
 
 .modal-content {
     background: white;
-    border-radius: 8px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    border-radius: 0;
+    box-shadow: none;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-header {
@@ -41,6 +46,8 @@
 
 .modal-body {
     padding: 1rem;
+    flex: 1;
+    overflow-y: auto;
 }
 
 .modal-footer {
@@ -73,12 +80,11 @@ body.modal-open {
 }
 
 body {
-    width: 850px;
-    max-height: 800px;
-    min-height: 600px;
+    width: 1100px;
+    height: 850px;
     margin: 0;
     padding: 0;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 /* RTL/LTR Support */
@@ -121,12 +127,13 @@ html[dir="ltr"] .me-2 {
 
 /* Main Content Layout */
 .main-content {
-    height: calc(100vh - 120px);
+    height: calc(850px - 120px);
+    overflow: hidden;
 }
 
 /* Folders Sidebar */
 .folders-sidebar {
-    width: 180px;
+    width: 200px;
     border-right: 1px solid #dee2e6;
     background: #f8f9fa;
     display: flex;
@@ -141,8 +148,9 @@ html[dir="ltr"] .me-2 {
 
 .folders-list {
     flex: 1;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 8px;
+    max-height: calc(850px - 200px);
 }
 
 .folder-item {
@@ -155,6 +163,7 @@ html[dir="ltr"] .me-2 {
     align-items: center;
     justify-content: space-between;
     font-size: 0.85rem;
+    position: relative;
 }
 
 .folder-item:hover {
@@ -200,6 +209,34 @@ html[dir="ltr"] .me-2 {
     font-size: 0.8rem;
 }
 
+/* Folder Drop Zone Styles */
+.folder-item.drag-over {
+    background: rgba(0, 123, 255, 0.3) !important;
+    border: 2px dashed #007bff;
+    box-shadow: 0 0 8px rgba(0, 123, 255, 0.4);
+    transform: scale(1.02);
+}
+
+.folder-item.drag-over.active {
+    background: rgba(0, 123, 255, 0.8) !important;
+    border-color: #0056b3;
+}
+
+.folder-item.drag-target {
+    animation: folderPulse 1s ease-in-out infinite;
+}
+
+@keyframes folderPulse {
+    0%, 100% { 
+        background: rgba(0, 123, 255, 0.1); 
+        transform: scale(1);
+    }
+    50% { 
+        background: rgba(0, 123, 255, 0.3); 
+        transform: scale(1.02);
+    }
+}
+
 /* Accounts Section */
 .accounts-section {
     display: flex;
@@ -213,7 +250,9 @@ html[dir="ltr"] .me-2 {
 .accounts-container {
     flex: 1;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 8px;
+    height: calc(730px - 80px);
 }
 
 /* Account Card Styles */
@@ -705,7 +744,7 @@ html[dir="ltr"] .copy-btn {
     overflow-x: hidden;
     overflow-y: auto;
     outline: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.8);
 }
 
 .modal.show {
@@ -714,9 +753,12 @@ html[dir="ltr"] .copy-btn {
 
 .modal-dialog {
     position: relative;
-    width: auto;
-    margin: 0.5rem;
+    width: 100%;
+    height: 100vh;
+    margin: 0;
     pointer-events: none;
+    max-width: 100%;
+    max-height: 100vh;
 }
 
 .modal-content {
@@ -724,11 +766,12 @@ html[dir="ltr"] .copy-btn {
     display: flex;
     flex-direction: column;
     width: 100%;
+    height: 100vh;
     pointer-events: auto;
     background-color: #fff;
     background-clip: padding-box;
-    border: 1px solid rgba(0, 0, 0, 0.2);
-    border-radius: 0.5rem;
+    border: none;
+    border-radius: 0;
     outline: 0;
 }
 
@@ -747,6 +790,7 @@ html[dir="ltr"] .copy-btn {
     position: relative;
     flex: 1 1 auto;
     padding: 1rem;
+    overflow-y: auto;
 }
 
 .modal-footer {

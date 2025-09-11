@@ -548,17 +548,33 @@ class StorageManager {
 
     /**
      * Export all data
+     * @param {string} exportPassword - Optional password to encrypt the export
      * @returns {Promise<Object>} Exported data
      */
-    async exportData() {
+    async exportData(exportPassword = null) {
         try {
-            return {
-                accounts: await this.getAccounts(),
+            // Get raw data with decrypted secrets for re-encryption with export password
+            const rawData = await this.getRawDataForExport();
+            
+            const exportData = {
+                accounts: rawData.accounts,
                 folders: await this.getFolders(),
                 settings: await this.getSettings(),
                 exportedAt: new Date().toISOString(),
-                version: "1.0"
+                version: "1.1",
+                encrypted: !!exportPassword
             };
+
+            // If export password provided, encrypt the data
+            if (exportPassword) {
+                exportData.encryptedData = await this.encryptExportData(exportData, exportPassword);
+                // Remove the raw data, keep only encrypted version
+                delete exportData.accounts;
+                delete exportData.folders;
+                delete exportData.settings;
+            }
+
+            return exportData;
         } catch (error) {
             console.error("Error exporting data:", error);
             return null;
@@ -566,19 +582,91 @@ class StorageManager {
     }
 
     /**
+     * Get raw data for export with decrypted secrets
+     * @returns {Promise<Object>} Raw data with decrypted secrets
+     */
+    async getRawDataForExport() {
+        try {
+            const accounts = await this.getAccounts();
+            const decryptedAccounts = [];
+
+            for (const account of accounts) {
+                const decryptedAccount = { ...account };
+                
+                // If account is encrypted, decrypt the secret for export
+                if (account.encrypted && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
+                    try {
+                        decryptedAccount.secret = await this.cryptoManager.decrypt(account.secret);
+                        decryptedAccount.encrypted = false; // Mark as decrypted in export
+                    } catch (error) {
+                        console.error("Failed to decrypt account secret:", error);
+                        // Keep encrypted if decryption fails
+                    }
+                }
+                
+                decryptedAccounts.push(decryptedAccount);
+            }
+
+            return {
+                accounts: decryptedAccounts
+            };
+        } catch (error) {
+            console.error("Error getting raw data for export:", error);
+            throw error;
+        }
+    }
+
+    /**
+     * Encrypt export data with password
+     * @param {Object} data - Data to encrypt
+     * @param {string} password - Export password
+     * @returns {Promise<string>} Encrypted data string
+     */
+    async encryptExportData(data, password) {
+        try {
+            // Create a temporary crypto manager for export encryption
+            const exportCrypto = new CryptoManager();
+            await exportCrypto.generateEncryptionKey(password);
+            
+            const dataToEncrypt = {
+                accounts: data.accounts,
+                folders: data.folders,
+                settings: data.settings
+            };
+
+            return await exportCrypto.encrypt(JSON.stringify(dataToEncrypt));
+        } catch (error) {
+            console.error("Error encrypting export data:", error);
+            throw error;
+        }
+    }
+
+    /**
      * Import data
      * @param {Object} data - Data to import
+     * @param {string} importPassword - Password for encrypted imports
      * @returns {Promise<boolean>} Success status
      */
-    async importData(data) {
+    async importData(data, importPassword = null) {
         try {
-            if (data.accounts) {
+            let importData = data;
+
+            // If data is encrypted, decrypt it first
+            if (data.encrypted && data.encryptedData) {
+                if (!importPassword) {
+                    throw new Error("Password required for encrypted import");
+                }
+                
+                importData = await this.decryptImportData(data.encryptedData, importPassword);
+            }
+
+            if (importData.accounts) {
                 // If crypto is enabled, encrypt the secrets during import
                 if (this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
                     const encryptedAccounts = await Promise.all(
-                        data.accounts.map(async (account) => {
+                        importData.accounts.map(async (account) => {
                             if (!account.encrypted && account.secret) {
-                                // Encrypt the secret
+                                // Encrypt the secret with current user's password
                                 const encryptedSecret = await this.cryptoManager.encrypt(account.secret);
                                 return {
                                     ...account,
@@ -591,19 +679,39 @@ class StorageManager {
                     );
                     await this.saveAccounts(encryptedAccounts);
                 } else {
-                    await this.saveAccounts(data.accounts);
+                    await this.saveAccounts(importData.accounts);
                 }
             }
-            if (data.folders) {
-                await this.saveFolders(data.folders);
+            if (importData.folders) {
+                await this.saveFolders(importData.folders);
             }
-            if (data.settings) {
-                await this.saveSettings(data.settings);
+            if (importData.settings) {
+                await this.saveSettings(importData.settings);
             }
             return true;
         } catch (error) {
             console.error("Error importing data:", error);
             return false;
+        }
+    }
+
+    /**
+     * Decrypt import data with password
+     * @param {string} encryptedData - Encrypted data string
+     * @param {string} password - Import password
+     * @returns {Promise<Object>} Decrypted data
+     */
+    async decryptImportData(encryptedData, password) {
+        try {
+            // Create a temporary crypto manager for import decryption
+            const importCrypto = new CryptoManager();
+            await importCrypto.generateEncryptionKey(password);
+            
+            const decryptedString = await importCrypto.decrypt(encryptedData);
+            return JSON.parse(decryptedString);
+        } catch (error) {
+            console.error("Error decrypting import data:", error);
+            throw new Error("Invalid password or corrupted data");
         }
     }
 
