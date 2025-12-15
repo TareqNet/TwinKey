@@ -14,7 +14,9 @@ class PopupManager {
         this.dropZonesVisible = false;
         this.isAuthenticated = false;
         this.pendingAccount = null;
-        
+        this.inactivityTimer = null;
+        this.INACTIVITY_TIMEOUT_MS = 60000; // 1 minute
+
         this.init();
     }
 
@@ -25,21 +27,37 @@ class PopupManager {
                 document.addEventListener('DOMContentLoaded', resolve);
             });
         }
-        
+
         // Wait for i18n to initialize
         if (window.i18n) {
             await window.i18n.init();
         }
-        
+
         // Initialize TOTP generator
         this.totpGenerator = new TOTPGenerator();
-        
+
         // Initialize crypto manager
         await this.storageManager.initializeCrypto(this.cryptoManager);
-        
+
+        // Check for cached auth from "Open in New Window" action
+        try {
+            const session = await chrome.storage.session.get('temp_auth_password');
+            if (session.temp_auth_password) {
+                const success = await this.cryptoManager.authenticateWithPassword(session.temp_auth_password);
+                if (success) {
+                    this.isAuthenticated = true;
+                    this.startActivityTracking(); // Start tracking immediately
+                }
+                // Clear the temp password immediately
+                await chrome.storage.session.remove('temp_auth_password');
+            }
+        } catch (e) {
+            console.error("Error checking session storage:", e);
+        }
+
         // Enable encryption by default for new accounts
         this.storageManager.isEncryptionEnabled = true;
-        
+
         // Check if authentication is required
         const needsAuth = await this.checkAuthenticationRequired();
         if (needsAuth) {
@@ -58,7 +76,7 @@ class PopupManager {
         try {
             this.accounts = await this.storageManager.getAccounts();
             this.folders = await this.storageManager.getFolders() || [];
-            
+
             // Initialize sortOrder for accounts that don't have it
             let hasChanges = false;
             this.accounts.forEach((account, index) => {
@@ -67,7 +85,7 @@ class PopupManager {
                     hasChanges = true;
                 }
             });
-            
+
             // Save if we made changes
             if (hasChanges) {
                 for (const account of this.accounts) {
@@ -76,7 +94,7 @@ class PopupManager {
                     }
                 }
             }
-            
+
             this.filterAndSortAccounts();
         } catch (error) {
             console.error("Error loading data:", error);
@@ -86,7 +104,7 @@ class PopupManager {
 
     filterAndSortAccounts() {
         // Filter by folder
-        let filtered = this.currentFolderId === 'all' 
+        let filtered = this.currentFolderId === 'all'
             ? [...this.accounts]
             : this.accounts.filter(account => account.folderId === this.currentFolderId);
 
@@ -198,7 +216,12 @@ class PopupManager {
         });
 
         // Open in tab button
-        document.getElementById("openInTabBtn").addEventListener("click", () => {
+        document.getElementById("openInTabBtn").addEventListener("click", async () => {
+            // If we have a current password (from login), save it to session storage
+            // so the new window can auto-login
+            if (this.currentPassword && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
+                await chrome.storage.session.set({ 'temp_auth_password': this.currentPassword });
+            }
             this.openInNewTab();
         });
 
@@ -310,7 +333,7 @@ class PopupManager {
             };
 
             const success = await this.storageManager.addAccount(account);
-            
+
             if (success) {
                 this.accounts.push(account);
                 this.filterAndSortAccounts();
@@ -332,7 +355,7 @@ class PopupManager {
             this.filteredAccounts = [...this.accounts];
         } else {
             const searchTerm = query.toLowerCase().trim();
-            this.filteredAccounts = this.accounts.filter(account => 
+            this.filteredAccounts = this.accounts.filter(account =>
                 account.name.toLowerCase().includes(searchTerm) ||
                 account.service.toLowerCase().includes(searchTerm) ||
                 account.email.toLowerCase().includes(searchTerm)
@@ -355,7 +378,7 @@ class PopupManager {
             if (this.accounts.length === 0) {
                 const noAccountsText = window.i18n ? window.i18n.t('no_accounts') : 'No accounts';
                 const addAccountText = window.i18n ? window.i18n.t('add_account') : 'Add Account';
-                
+
                 // Create or update empty state
                 if (emptyState) {
                     emptyState.innerHTML = `
@@ -366,7 +389,7 @@ class PopupManager {
                         </button>
                     `;
                     emptyState.classList.remove("d-none");
-                    
+
                     // Add event listener with timeout to ensure DOM is ready
                     setTimeout(() => {
                         const btn = document.getElementById("addFirstAccountBtn");
@@ -387,7 +410,7 @@ class PopupManager {
                             </button>
                         </div>
                     `;
-                    
+
                     setTimeout(() => {
                         const btn = document.getElementById("addFirstAccountBtn");
                         if (btn) {
@@ -419,26 +442,26 @@ class PopupManager {
             if (emptyState) {
                 emptyState.classList.add("d-none");
             }
-            
+
             // Clear container and add account cards
             const accountCards = await Promise.all(
                 this.filteredAccounts.map(account => this.renderAccountCard(account))
             );
             container.innerHTML = accountCards.join("");
-            
+
             // Setup container drag and drop once
             if (!this.containerDragSetup) {
                 this.setupContainerDragAndDrop();
                 this.containerDragSetup = true;
             }
-            
+
             // Add event listeners to account cards
             setTimeout(() => {
                 // Initialize dropdowns
                 document.querySelectorAll('[data-bs-toggle="dropdown"]').forEach(element => {
                     new window.bootstrap.Dropdown(element);
                 });
-                
+
                 this.filteredAccounts.forEach(account => {
                     const card = document.querySelector(`[data-account-id="${account.id}"]`);
                     if (card) {
@@ -477,7 +500,7 @@ class PopupManager {
         const otp = await this.generateOTP(account.id);
         const timeLeft = this.getTimeLeft();
         const timerClass = timeLeft <= 10 ? "danger" : timeLeft <= 20 ? "warning" : "";
-        
+
         // Get folder name for display
         const folder = this.folders.find(f => f.id === account.folderId);
         const folderName = folder ? folder.name : 'Uncategorized';
@@ -522,7 +545,7 @@ class PopupManager {
 
     setupContainerDragAndDrop() {
         const container = document.getElementById('accountsContainer');
-        
+
         // Handle dragstart on grip handles using event delegation
         container.addEventListener('dragstart', (e) => {
             if (e.target.closest('.drag-handle')) {
@@ -532,7 +555,7 @@ class PopupManager {
                     card.classList.add('dragging');
                     e.dataTransfer.effectAllowed = 'move';
                     e.dataTransfer.setData('text/html', '');
-                    
+
                     // Show drop zones and folder drop zones
                     this.showDropZones();
                     this.showFolderDropZones();
@@ -545,7 +568,7 @@ class PopupManager {
             if (this.draggedElement) {
                 this.draggedElement.classList.remove('dragging');
                 this.draggedElement = null;
-                
+
                 // Hide drop zones
                 this.hideDropZones();
                 this.hideFolderDropZones();
@@ -574,7 +597,7 @@ class PopupManager {
             if (this.draggedElement) {
                 e.preventDefault();
                 e.dataTransfer.dropEffect = 'move';
-                
+
                 // Highlight drop zone
                 const dropZone = e.target.closest('.drop-zone');
                 if (dropZone) {
@@ -596,19 +619,19 @@ class PopupManager {
             const dropZone = e.target.closest('.drop-zone');
             if (this.draggedElement && dropZone) {
                 e.preventDefault();
-                
+
                 const targetIndex = parseInt(dropZone.dataset.index);
-                
+
                 // Hide drop zones first to get clean DOM
                 this.hideDropZones();
-                
+
                 // Get current cards (excluding the dragged one)
                 const currentCards = Array.from(container.querySelectorAll('.account-card:not(.dragging)'));
-                
+
                 // Remove dragged element temporarily
                 this.draggedElement.remove();
                 this.draggedElement.classList.remove('dragging');
-                
+
                 // Insert at the correct position
                 if (targetIndex === 0) {
                     // Insert at the beginning
@@ -624,10 +647,10 @@ class PopupManager {
                     // Insert at specific position
                     container.insertBefore(this.draggedElement, currentCards[targetIndex]);
                 }
-                
+
                 // Clean up
                 this.draggedElement = null;
-                
+
                 // Update order and save
                 this.updateAccountOrder();
             }
@@ -690,15 +713,15 @@ class PopupManager {
             const folderItem = e.target.closest('.folder-item');
             if (this.draggedElement && folderItem) {
                 e.preventDefault();
-                
+
                 const targetFolderId = folderItem.dataset.folderId;
                 const accountId = this.draggedElement.dataset.accountId;
-                
+
                 // Don't allow drop on "all" folder
                 if (targetFolderId !== 'all') {
                     this.moveAccountToFolder(accountId, targetFolderId);
                 }
-                
+
                 // Clean up
                 this.hideDropZones();
                 this.hideFolderDropZones();
@@ -712,11 +735,11 @@ class PopupManager {
 
     getDragAfterElement(container, y) {
         const draggableElements = [...container.querySelectorAll('.account-card:not(.dragging)')];
-        
+
         return draggableElements.reduce((closest, child) => {
             const box = child.getBoundingClientRect();
             const offset = y - box.top - box.height / 2;
-            
+
             if (offset < 0 && offset > closest.offset) {
                 return { offset: offset, element: child };
             } else {
@@ -727,16 +750,16 @@ class PopupManager {
 
     showDropZones() {
         if (this.dropZonesVisible) return;
-        
+
         const container = document.getElementById('accountsContainer');
         const cards = Array.from(container.querySelectorAll('.account-card:not(.dragging)'));
-        
+
         // Store original cards order for reference
         this.originalCardsOrder = cards.map(card => ({
             element: card,
             id: card.dataset.accountId
         }));
-        
+
         if (cards.length === 0) {
             // If no cards, add one drop zone
             const endDropZone = this.createDropZone(0, null);
@@ -745,7 +768,7 @@ class PopupManager {
             // Insert drop zones between cards
             for (let i = 0; i <= cards.length; i++) {
                 const dropZone = this.createDropZone(i, null);
-                
+
                 if (i === 0) {
                     // Before first card
                     container.insertBefore(dropZone, cards[0]);
@@ -758,30 +781,30 @@ class PopupManager {
                 }
             }
         }
-        
+
         // Show all drop zones with animation
         setTimeout(() => {
             container.querySelectorAll('.drop-zone').forEach(zone => {
                 zone.classList.add('visible');
             });
         }, 10);
-        
+
         this.dropZonesVisible = true;
     }
 
     hideDropZones() {
         const container = document.getElementById('accountsContainer');
         const dropZones = container.querySelectorAll('.drop-zone');
-        
+
         dropZones.forEach(zone => {
             zone.classList.remove('visible', 'drag-over');
         });
-        
+
         // Remove drop zones after animation
         setTimeout(() => {
             dropZones.forEach(zone => zone.remove());
         }, 200);
-        
+
         this.dropZonesVisible = false;
     }
 
@@ -801,7 +824,7 @@ class PopupManager {
                 zone.classList.remove('drag-over');
             }
         });
-        
+
         // Highlight current drop zone
         dropZone.classList.add('drag-over');
     }
@@ -833,7 +856,7 @@ class PopupManager {
                 folder.classList.remove('drag-over');
             }
         });
-        
+
         // Highlight current folder
         folderItem.classList.add('drag-over');
     }
@@ -845,25 +868,25 @@ class PopupManager {
     async moveAccountToFolder(accountId, targetFolderId) {
         try {
             // Update account folder
-            const success = await this.storageManager.updateAccount(accountId, { 
-                folderId: targetFolderId 
+            const success = await this.storageManager.updateAccount(accountId, {
+                folderId: targetFolderId
             });
-            
+
             if (success) {
                 // Update local account data
                 const account = this.accounts.find(acc => acc.id === accountId);
                 if (account) {
                     account.folderId = targetFolderId;
                 }
-                
+
                 // Refresh UI
                 this.filterAndSortAccounts();
                 await this.renderFolders();
                 await this.renderAccounts();
-                
+
                 // Show success message
-                const targetFolder = this.folders.find(f => f.id === targetFolderId) || 
-                                   { name: targetFolderId === 'uncategorized' ? 'Uncategorized' : targetFolderId };
+                const targetFolder = this.folders.find(f => f.id === targetFolderId) ||
+                    { name: targetFolderId === 'uncategorized' ? 'Uncategorized' : targetFolderId };
                 this.showToast(`Account moved to ${targetFolder.name}`, "success");
             } else {
                 this.showToast("Failed to move account", "error");
@@ -889,7 +912,7 @@ class PopupManager {
         for (const account of newOrder) {
             await this.storageManager.updateAccount(account.id, { sortOrder: account.sortOrder });
         }
-        
+
         // Update local accounts array with new order
         this.accounts = await this.storageManager.getAccounts();
         this.filterAndSortAccounts();
@@ -966,30 +989,30 @@ class PopupManager {
                 const accountCard = element.closest(".account-card");
                 const accountId = accountCard.getAttribute("data-account-id");
                 const account = this.accounts.find(acc => acc.id === accountId);
-                
+
                 if (account) {
                     const newOTP = await this.generateOTP(account.id);
                     element.textContent = this.formatOTP(newOTP);
                     element.setAttribute("data-otp", newOTP);
                 }
             });
-            
+
             await Promise.all(updates);
         }
     }
 
     async copyOTP(account) {
         const otp = await this.generateOTP(account.id);
-        
+
         try {
             await navigator.clipboard.writeText(otp);
             const successMsg = window.i18n ? window.i18n.t('success_account_copied', { name: account.name }) : `OTP code copied for ${account.name}`;
             this.showToast(successMsg, "success");
-            
+
             // Update last used
             account.lastUsed = new Date().toISOString();
             await this.storageManager.updateAccount(account.id, { lastUsed: account.lastUsed });
-            
+
             // Visual feedback
             const button = document.querySelector(`[data-account-id="${account.id}"] .copy-btn`);
             if (button) {
@@ -1005,19 +1028,19 @@ class PopupManager {
     async showAccountDetails(account) {
         const detailsContent = document.getElementById("detailsContent");
         const detailsTitle = document.getElementById("detailsTitle");
-        
+
         detailsTitle.textContent = account.name;
-        
+
         const otp = await this.generateOTP(account.id);
-        const lastUsed = account.lastUsed 
+        const lastUsed = account.lastUsed
             ? (window.i18n ? window.i18n.formatDate(account.lastUsed) : new Date(account.lastUsed).toLocaleDateString())
             : (window.i18n ? window.i18n.t('never_used') : 'Never used');
-        
+
         const serviceLabel = window.i18n ? window.i18n.t('service') : 'Service';
         const emailLabel = window.i18n ? window.i18n.t('email') : 'Email';
         const lastUsedLabel = window.i18n ? window.i18n.t('last_used') : 'Last Used';
         const copyText = window.i18n ? window.i18n.t('copy') : 'Copy';
-        
+
         detailsContent.innerHTML = `
             <div class="mb-3">
                 <strong>${serviceLabel}:</strong> ${account.service}
@@ -1035,7 +1058,7 @@ class PopupManager {
                 </button>
             </div>
         `;
-        
+
         document.getElementById("accountDetails").classList.remove("d-none");
     }
 
@@ -1046,10 +1069,10 @@ class PopupManager {
     showToast(message, type = "info") {
         const toast = document.getElementById("toast");
         const toastMessage = document.getElementById("toastMessage");
-        
+
         toastMessage.textContent = message;
         toast.className = `toast show ${type === "error" ? "bg-danger text-white" : type === "success" ? "bg-success text-white" : ""}`;
-        
+
         setTimeout(() => {
             toast.classList.remove("show");
         }, 3000);
@@ -1069,13 +1092,13 @@ class PopupManager {
 
     showEditForm(account) {
         this.currentEditingAccount = account;
-        
+
         // Populate form with current values
         document.getElementById("editAccountName").value = account.name;
         document.getElementById("editServiceName").value = account.service;
         document.getElementById("editAccountEmail").value = account.email;
         document.getElementById("editAccountFolder").value = account.folderId || 'uncategorized';
-        
+
         // Show edit form
         document.getElementById("editAccountForm").classList.remove("d-none");
         document.getElementById("editAccountName").focus();
@@ -1113,14 +1136,14 @@ class PopupManager {
             };
 
             const success = await this.storageManager.updateAccount(this.currentEditingAccount.id, updateData);
-            
+
             if (success) {
                 // Update local account data
                 const accountIndex = this.accounts.findIndex(acc => acc.id === this.currentEditingAccount.id);
                 if (accountIndex !== -1) {
                     this.accounts[accountIndex] = { ...this.accounts[accountIndex], ...updateData };
                 }
-                
+
                 this.filterAndSortAccounts();
                 await this.renderFolders();
                 await this.renderAccounts();
@@ -1142,12 +1165,12 @@ class PopupManager {
 
         try {
             const success = await this.storageManager.deleteAccount(account.id);
-            
+
             if (success) {
                 // Remove from local arrays
                 this.accounts = this.accounts.filter(acc => acc.id !== account.id);
                 this.filterAndSortAccounts();
-                
+
                 await this.renderFolders();
                 await this.renderAccounts();
                 this.showToast("Account deleted successfully", "success");
@@ -1163,7 +1186,7 @@ class PopupManager {
     // Folder Management Functions
     async renderFolders() {
         const foldersList = document.getElementById("foldersList");
-        
+
         // Get folder counts
         const folderCounts = {};
         this.accounts.forEach(account => {
@@ -1172,7 +1195,7 @@ class PopupManager {
         });
 
         const totalCount = this.accounts.length;
-        
+
         let html = `
             <div class="folder-item ${this.currentFolderId === 'all' ? 'active' : ''}" data-folder-id="all">
                 <div class="folder-info">
@@ -1266,7 +1289,7 @@ class PopupManager {
 
         // Update folder options in forms
         this.updateFolderOptions();
-        
+
         // Setup folder drag and drop after rendering
         setTimeout(() => {
             this.setupFolderDragAndDrop();
@@ -1335,7 +1358,7 @@ class PopupManager {
             };
 
             const success = await this.storageManager.addFolder(folder);
-            
+
             if (success) {
                 this.folders.push(folder);
                 await this.renderFolders();
@@ -1359,7 +1382,7 @@ class PopupManager {
 
         try {
             const success = await this.storageManager.updateFolder(folderId, { name: newName });
-            
+
             if (success) {
                 folder.name = newName;
                 await this.renderFolders();
@@ -1379,7 +1402,7 @@ class PopupManager {
 
         const accountsInFolder = this.accounts.filter(acc => acc.folderId === folderId);
         let message = `Are you sure you want to delete the folder "${folder.name}"?`;
-        
+
         if (accountsInFolder.length > 0) {
             message += `\n\n${accountsInFolder.length} accounts in this folder will be moved to "Uncategorized".`;
         }
@@ -1396,15 +1419,15 @@ class PopupManager {
             }
 
             const success = await this.storageManager.deleteFolder(folderId);
-            
+
             if (success) {
                 this.folders = this.folders.filter(f => f.id !== folderId);
-                
+
                 // If current folder was deleted, switch to all
                 if (this.currentFolderId === folderId) {
                     this.currentFolderId = 'all';
                 }
-                
+
                 this.filterAndSortAccounts();
                 await this.renderFolders();
                 await this.renderAccounts();
@@ -1425,12 +1448,12 @@ class PopupManager {
     async checkAuthenticationRequired() {
         // Check if password auth is set up
         const hasAuth = await this.cryptoManager.isPasswordAuthSetup();
-        
+
         // If no auth setup, need to set it up
         if (!hasAuth) {
             return true;
         }
-        
+
         // If auth is set up, check if we need to authenticate
         return !this.cryptoManager.isAuthenticated();
     }
@@ -1442,11 +1465,11 @@ class PopupManager {
         // Show appropriate sections
         const passwordSection = document.getElementById("passwordSection");
         const setupSection = document.getElementById("setupSection");
-        
+
         // Check if this is first time setup
         const hasAuth = await this.cryptoManager.isPasswordAuthSetup();
         const isFirstTime = !hasAuth;
-        
+
         if (isFirstTime) {
             // First time setup - show setup options
             setupSection.classList.remove('d-none');
@@ -1460,7 +1483,7 @@ class PopupManager {
         modal.classList.add('show');
         modal.style.display = 'block';
         document.body.classList.add('modal-open');
-        
+
         // Setup event listeners after modal is shown
         this.setupAuthEventListeners();
     }
@@ -1497,13 +1520,44 @@ class PopupManager {
                 }
             };
         }
-        
+
         // Enter key for setup password
         const newPasswordInput = document.getElementById("newMasterPassword");
         if (newPasswordInput) {
             newPasswordInput.onkeypress = (e) => {
                 if (e.key === "Enter") {
                     this.setupPasswordAuth();
+                }
+            };
+        }
+
+        // Open in new window auth button
+        const openInNewWindowAuthBtn = document.getElementById("openInNewWindowAuthBtn");
+        if (openInNewWindowAuthBtn) {
+            openInNewWindowAuthBtn.onclick = async () => {
+                const passwordInput = document.getElementById("masterPassword");
+                const password = passwordInput.value.trim();
+
+                if (password) {
+                    // Try to authenticate first
+                    try {
+                        const success = await this.cryptoManager.authenticateWithPassword(password);
+                        if (success) {
+                            // Save to session storage for the new window
+                            if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
+                                await chrome.storage.session.set({ 'temp_auth_password': password });
+                            }
+                            this.openInNewTab();
+                            window.close(); // Close this popup
+                        } else {
+                            this.showToast("Invalid PIN/password", "error");
+                        }
+                    } catch (error) {
+                        console.error("Auth error:", error);
+                        this.showToast("Authentication failed", "error");
+                    }
+                } else {
+                    this.openInNewTab();
                 }
             };
         }
@@ -1537,16 +1591,17 @@ class PopupManager {
     async authenticateWithPassword() {
         const passwordInput = document.getElementById("masterPassword");
         const password = passwordInput.value.trim();
-        
+
         if (!password) {
             this.showToast("Please enter your PIN/password", "error");
             return;
         }
-        
+
         try {
             const success = await this.cryptoManager.authenticateWithPassword(password);
             if (success) {
                 this.isAuthenticated = true;
+                this.currentPassword = password; // Store password for session transfer
                 this.hideAuthenticationModal();
                 await this.completeInitialization();
                 passwordInput.value = '';
@@ -1569,7 +1624,7 @@ class PopupManager {
             console.log("Setting up system auth...");
             const success = await this.cryptoManager.setupSystemAuth();
             console.log("Setup result:", success);
-            
+
             if (success) {
                 localStorage.setItem('twinkey_has_auth', 'true');
                 this.isAuthenticated = true;
@@ -1587,17 +1642,17 @@ class PopupManager {
 
     async setupPasswordAuth() {
         const newPassword = document.getElementById("newMasterPassword").value.trim();
-        
+
         if (!newPassword) {
             this.showToast("Please enter a PIN or password", "error");
             return;
         }
-        
+
         if (newPassword.length < 3) {
             this.showToast("PIN/Password must be at least 3 characters", "error");
             return;
         }
-        
+
         try {
             const success = await this.cryptoManager.generateEncryptionKey(newPassword);
             if (success) {
@@ -1607,7 +1662,7 @@ class PopupManager {
                 } else {
                     localStorage.setItem('twinkey_has_auth', 'true');
                 }
-                
+
                 this.isAuthenticated = true;
                 this.hideAuthenticationModal();
                 await this.completeInitialization();
@@ -1621,6 +1676,60 @@ class PopupManager {
         }
     }
 
+    startActivityTracking() {
+        // Clear existing listeners if any (to avoid duplicates, though we only call this once)
+        if (this.activityListeners) {
+            this.activityListeners.forEach(({ event, handler }) => {
+                document.removeEventListener(event, handler);
+            });
+        }
+
+        this.activityListeners = [];
+        const resetTimer = () => this.resetInactivityTimer();
+
+        // Events that define activity
+        const events = ['mousemove', 'mousedown', 'keypress', 'touchmove', 'scroll', 'click'];
+
+        events.forEach(event => {
+            document.addEventListener(event, resetTimer, { passive: true });
+            this.activityListeners.push({ event, handler: resetTimer });
+        });
+
+        // Start the timer
+        this.resetInactivityTimer();
+    }
+
+    resetInactivityTimer() {
+        if (this.inactivityTimer) {
+            clearTimeout(this.inactivityTimer);
+        }
+
+        // Only start timer if authenticated
+        if (this.isAuthenticated) {
+            this.inactivityTimer = setTimeout(() => {
+                this.lockApp();
+            }, this.INACTIVITY_TIMEOUT_MS);
+        }
+    }
+
+    lockApp() {
+        if (!this.isAuthenticated) return;
+
+        console.log("Auto-locking application due to inactivity");
+
+        // Clear auth state
+        this.isAuthenticated = false;
+        this.currentPassword = null;
+        this.cryptoManager.logout();
+
+        // Clear sensitive data from UI (optional, but good for security)
+        // We don't clear this.accounts to avoid re-fetching, but we will block access
+
+        // Show auth modal again
+        this.showAuthenticationModal();
+        this.showToast("App locked due to inactivity", "info");
+    }
+
     async completeInitialization() {
         await this.loadData();
         this.setupEventListeners();
@@ -1628,6 +1737,7 @@ class PopupManager {
         await this.renderAccounts();
         this.startOTPUpdater();
         this.setupLanguageSelector();
+        this.startActivityTracking();
 
         // Handle pending account if exists
         if (this.pendingAccount) {
@@ -1648,7 +1758,7 @@ class PopupManager {
             } else {
                 this.showToast("Failed to add account", "error");
             }
-            
+
             this.pendingAccount = null;
         }
     }
@@ -1676,10 +1786,10 @@ class PopupManager {
             const height = 850;
             const left = (screen.width - width) / 2;
             const top = (screen.height - height) / 2;
-            
+
             window.open(
-                'popup.html', 
-                'TwinKey', 
+                'popup.html',
+                'TwinKey',
                 `width=${width},height=${height},left=${left},top=${top},resizable=no,scrollbars=no,menubar=no,toolbar=no,location=no,status=no`
             );
         }
@@ -1716,7 +1826,7 @@ class PopupManager {
             document.getElementById("exportUnencrypted").checked = false;
             document.getElementById("exportPassword").value = "";
             this.toggleExportPasswordSection(true);
-            
+
             // Show modal
             modal.classList.add('show');
             modal.style.display = 'block';
@@ -1760,7 +1870,7 @@ class PopupManager {
             // Export data with or without password
             const password = exportType === 'encrypted' ? exportPassword : null;
             const data = await this.storageManager.exportData(password);
-            
+
             if (!data) {
                 this.showToast("Error exporting data", "error");
                 return;
@@ -1768,18 +1878,18 @@ class PopupManager {
 
             // Create filename with current date and encryption indicator
             const now = new Date();
-            const dateStr = now.getFullYear() + '-' + 
-                          String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-                          String(now.getDate()).padStart(2, '0');
+            const dateStr = now.getFullYear() + '-' +
+                String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                String(now.getDate()).padStart(2, '0');
             const encryptedSuffix = exportType === 'encrypted' ? '-encrypted' : '';
             const filename = `twinkey-backup-${dateStr}${encryptedSuffix}.json`;
 
             // Create download link
-            const blob = new Blob([JSON.stringify(data, null, 2)], { 
-                type: 'application/json' 
+            const blob = new Blob([JSON.stringify(data, null, 2)], {
+                type: 'application/json'
             });
             const url = URL.createObjectURL(blob);
-            
+
             const link = document.createElement('a');
             link.href = url;
             link.download = filename;
@@ -1790,11 +1900,11 @@ class PopupManager {
 
             // Hide modal and show success message
             this.hideExportOptionsModal();
-            const message = exportType === 'encrypted' 
+            const message = exportType === 'encrypted'
                 ? "Data exported successfully with password protection"
                 : "Data exported successfully without encryption";
             this.showToast(message, "success");
-            
+
         } catch (error) {
             console.error("Error exporting data:", error);
             this.showToast("Error exporting data", "error");
@@ -1805,16 +1915,16 @@ class PopupManager {
         const fileInput = event.target;
         const importBtn = document.getElementById("importBtn");
         const importPasswordSection = document.getElementById("importPasswordSection");
-        
+
         importBtn.disabled = !fileInput.files.length;
-        
+
         if (fileInput.files.length > 0) {
             try {
                 // Read and parse file to check if it's encrypted
                 const file = fileInput.files[0];
                 const text = await file.text();
                 const data = JSON.parse(text);
-                
+
                 // Show/hide password section based on encryption
                 if (data.encrypted && data.encryptedData) {
                     importPasswordSection.classList.remove("d-none");
@@ -1835,7 +1945,7 @@ class PopupManager {
             const fileInput = document.getElementById("importFile");
             const importPasswordInput = document.getElementById("importPassword");
             const file = fileInput.files[0];
-            
+
             if (!file) {
                 this.showToast("Please select a file", "error");
                 return;
@@ -1869,7 +1979,7 @@ class PopupManager {
             // Import data with password if needed
             const importPassword = data.encrypted ? importPasswordInput.value : null;
             const success = await this.storageManager.importData(data, importPassword);
-            
+
             if (!success) {
                 this.showToast("Error importing data. Please check password or file format.", "error");
                 return;
@@ -1879,7 +1989,7 @@ class PopupManager {
             await this.loadData();
             await this.renderFolders();
             await this.renderAccounts();
-            
+
             // Close modal and clear file input
             this.hideSettingsModal();
             fileInput.value = '';
@@ -1903,11 +2013,11 @@ class PopupManager {
             const accounts = await this.storageManager.getAccounts();
             const folders = await this.storageManager.getFolders();
             const storageSize = this.storageManager.getStorageSize();
-            
+
             const statsAccounts = document.getElementById("statsAccounts");
             const statsFolders = document.getElementById("statsFolders");
             const statsStorage = document.getElementById("statsStorage");
-            
+
             if (statsAccounts) statsAccounts.textContent = accounts.length;
             if (statsFolders) statsFolders.textContent = folders.length;
             if (statsStorage) {
