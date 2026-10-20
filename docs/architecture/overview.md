@@ -54,7 +54,7 @@ last_updated: 2026-10-20
 |-----|---------|-----------|
 | `otp_accounts` | Array of accounts `{id, name, service, email, secret, folderId, encrypted, lastUsed, createdAt, ...}` | `secret` only |
 | `otp_folders` | Array of folders `{id, name, parentId, createdAt}`; `uncategorized` is permanent | No |
-| `otp_settings` | `theme` (`auto` / `light` / `dark`) plus legacy display options | No |
+| `otp_settings` | `appearance` (`auto` / `light` / `dark`, written only by the theme picker); legacy `theme`, display options ignored | No |
 | `twinkey_salt` | PBKDF2 salt (16 bytes, comma-joined) | No |
 | `twinkey_kdf_iter` | PBKDF2 iterations for the vault key (missing = legacy 100,000; current 600,000) | No |
 | `twinkey_verify_token` | Verification UUID encrypted with the master key — login succeeds when it decrypts | Yes |

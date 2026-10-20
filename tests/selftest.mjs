@@ -294,7 +294,7 @@ test("validateImport rejects bad shapes and sanitizes fields", async () => {
             { name: "Bad base32", secret: "not-base32!" }
         ],
         folders: [{ id: "f1", name: "Work", icon: 'bi-x" onload="' }, { id: "f1", name: "Dup" }, { name: 42 }],
-        settings: { theme: "neon", showEmails: true, evil: 1 }
+        settings: { appearance: "neon", theme: "dark", showEmails: true, evil: 1 }
     });
 
     assert.equal(result.accounts.length, 1);
@@ -304,6 +304,16 @@ test("validateImport rejects bad shapes and sanitizes fields", async () => {
     assert.equal(result.folders[0].icon, "bi-folder", "icon outside allowlist replaced");
     assert.deepEqual({ ...result.settings }, { showEmails: true });
     assert.equal(result.skipped, 6);
+});
+
+test("New accounts get a unique sortOrder after a delete", async () => {
+    const vault = await newVault("123456");
+    const ids = [];
+    for (const name of ["A", "B", "C"]) ids.push(await vault.storage.addAccount({ name, service: "Other", email: "", secret: SECRET }));
+    await vault.storage.deleteAccount(ids[1]);
+    await vault.storage.addAccount({ name: "D", service: "Other", email: "", secret: SECRET });
+    const orders = (await vault.storage.getAccounts()).map(a => a.sortOrder);
+    assert.equal(new Set(orders).size, orders.length, `duplicate sortOrder in ${orders}`);
 });
 
 test("Merge import keeps existing accounts and overwrites same id", async () => {

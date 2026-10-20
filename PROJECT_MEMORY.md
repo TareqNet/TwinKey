@@ -78,7 +78,7 @@ No API, no backend. UI is the extension popup (`popup.html`, 780×560) or a deta
 - **Security**: PIN/password login (≥ 6 for new PINs), AES-256-GCM secrets, PBKDF2-SHA256 600k iterations (versioned, auto-upgrade from 100k), lockout after 5 failures, Change PIN, full wipe on 60 s auto-lock.
 - **Accounts**: add / edit / delete (confirm dialog), click-to-copy code, one global 30 s countdown ring, move up/down from the card menu, "last used" tracking.
 - **Organization**: folders sidebar with icons (folder select under 600 px), search, sort (custom, name, service, date, last used), drag-and-drop reorder and move-to-folder.
-- **Appearance**: Refined Minimal design, System / Light / Dark theme (`otp_settings.theme`), WCAG AA contrast, keyboard-accessible dialogs and menus.
+- **Appearance**: Refined Minimal design, System / Light / Dark theme (`otp_settings.appearance`; legacy `theme` ignored), WCAG AA contrast, keyboard-accessible dialogs and menus.
 - **Data**: settings modal, storage stats, JSON export/import v1.2 (plain or password-encrypted with KDF params in file; replace or merge; legacy v1.1 recovery).
 - **Window**: "Open in New Window" (header + login screen); login-screen button hands off auth once (`twinkey_handoff`, 10 s TTL).
 - **i18n**: English only (`locales/en.json`); `data-i18n` attributes + `window.i18n.t()`. Arabic removed 2025-08-29.

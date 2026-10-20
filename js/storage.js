@@ -45,7 +45,7 @@ class StorageManager {
         const settings = await this.getSettings();
         if (!settings) {
             await this.saveSettings({
-                theme: "auto",
+                appearance: "auto",
                 autoRefresh: true,
                 refreshInterval: 30,
                 showEmails: true,
@@ -121,7 +121,10 @@ class StorageManager {
                 secret: secret,
                 encrypted: true,
                 folderId: account.folderId || "uncategorized",
-                sortOrder: account.sortOrder !== undefined ? account.sortOrder : accounts.length,
+                // max + 1, not length: after a delete, length can collide with an existing slot
+                sortOrder: account.sortOrder !== undefined
+                    ? account.sortOrder
+                    : accounts.reduce((max, item) => Math.max(max, Number.isFinite(item.sortOrder) ? item.sortOrder : -1), -1) + 1,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
                 lastUsed: account.lastUsed || null
@@ -699,7 +702,7 @@ class StorageManager {
         const source = payload.settings;
         if (source && typeof source === "object" && !Array.isArray(source)) {
             settings = {};
-            if (["auto", "light", "dark"].includes(source.theme)) settings.theme = source.theme;
+            if (["auto", "light", "dark"].includes(source.appearance)) settings.appearance = source.appearance;
             if (typeof source.showEmails === "boolean") settings.showEmails = source.showEmails;
             if (!Object.keys(settings).length) settings = null;
         }

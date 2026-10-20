@@ -84,7 +84,8 @@ class PopupManager {
         await this.storageManager.initializeCrypto(this.cryptoManager);
         this.storageManager.isEncryptionEnabled = true;
         this.settings = (await this.storageManager.getSettings()) || {};
-        this.applyTheme(this.settings.theme || "auto");
+        // "appearance" is only written by the theme picker; the legacy "theme: light" default is ignored
+        this.applyTheme(this.settings.appearance || "auto");
 
         this.buildIconPicker();
         this.bindEvents();
@@ -1039,7 +1040,7 @@ class PopupManager {
     }
 
     async saveTheme(theme) {
-        this.settings = { ...((await this.storageManager.getSettings()) || {}), theme: theme };
+        this.settings = { ...((await this.storageManager.getSettings()) || {}), appearance: theme };
         await this.storageManager.saveSettings(this.settings);
         this.applyTheme(theme);
     }
@@ -1049,7 +1050,7 @@ class PopupManager {
     // ===============================
 
     openSettings() {
-        const theme = this.settings.theme || "auto";
+        const theme = this.settings.appearance || "auto";
         const radio = document.querySelector(`input[name="theme"][value="${theme === "light" || theme === "dark" ? theme : "auto"}"]`);
         radio.checked = true;
         $("importFile").value = "";
@@ -1091,6 +1092,10 @@ class PopupManager {
                     return;
                 }
                 await this.storageManager.rekeyVault(newPin);
+                // Every ciphertext changed: drop cached plaintexts and reload, or uncached accounts can't decrypt
+                this.storageManager.clearSecretCache();
+                this.accounts = await this.storageManager.getAccounts();
+                this.render();
                 [currentInput, newInput, confirmInput].forEach(input => { input.value = ""; });
                 this.toggleWeakPinBanner(false);
                 this.showToast("PIN changed successfully", "success");
