@@ -16,6 +16,35 @@ last_updated: 2026-10-20
 
 ---
 
+## ADR-007 — Native CSS, `<dialog>` and Popover Instead of Bootstrap
+
+> Date: 2026-10-20
+> Status: Accepted (supersedes the Bootstrap-based UI)
+> Ticket: N/A
+
+**Context**
+
+The popup loaded Bootstrap 5.3 CSS and Bootstrap Icons from jsdelivr (~230 KB, no SRI, not offline) plus a custom JS shim for modals/dropdowns. Only ~60 utility classes were used; two palettes (BS4/BS5) were mixed; the CDN forced `'unsafe-inline'` and external hosts in the CSP.
+
+**Options Considered**
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Vendor Bootstrap locally | 30 min, no visual change | Design stays tied to Bootstrap, 230 KB, inline styles remain |
+| Native CSS tokens + `<dialog>` + Popover + SVG sprite | Offline, strict CSP, dark mode, focus handling for free | One-time rewrite of HTML/CSS/rendering |
+
+**Decision**
+
+Native CSS with design tokens, native `<dialog>` (focus trap, Esc, backdrop), Popover API for menus (light dismiss), inline SVG sprite. Rendering uses an `h()` DOM builder, so there is no `innerHTML` anywhere.
+
+**Consequences**
+
+- CSP: `style-src 'self'` — no inline `style` attributes in markup; JS styles via CSSOM only (`el.style.setProperty`).
+- `minimum_chrome_version` 116 (Popover 114).
+- New UI strings should go through `locales/en.json`.
+
+---
+
 ## ADR-006 — Escape-at-Render + Strict CSP Against Stored HTML Injection
 
 > Date: 2026-10-20

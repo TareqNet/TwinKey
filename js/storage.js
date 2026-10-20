@@ -45,7 +45,7 @@ class StorageManager {
         const settings = await this.getSettings();
         if (!settings) {
             await this.saveSettings({
-                theme: "light",
+                theme: "auto",
                 autoRefresh: true,
                 refreshInterval: 30,
                 showEmails: true,

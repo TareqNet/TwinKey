@@ -33,7 +33,7 @@ last_updated: "2026-10-20"
 
 ## Interaction Layer
 
-No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100×850 popup window.
+No API, no backend. UI is the extension popup (`popup.html`, 780×560) or a detached 1100×760 window (`popup.html?window=1`).
 → Components and data flow: `docs/architecture/overview.md`
 
 **Data flow**: PIN → PBKDF2 (600k) key → decrypt secret from `chrome.storage.local` → `TOTPGenerator` → code in UI.
@@ -48,7 +48,7 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 | Platform | Chrome Extension Manifest V3, `minimum_chrome_version` 116 |
 | Pattern | Class-per-concern managers (`CryptoManager`, `StorageManager`, `PopupManager`, `TOTPGenerator`) |
 | Package Manager | None — no build step, no npm dependencies. Tests: `node tests/selftest.mjs` (Node 20+) |
-| UI libraries | Bootstrap 5.3.0 CSS + Bootstrap Icons 1.11.0 via jsdelivr CDN; `js/bootstrap-minimal.js` for Modal/Toast/Dropdown JS |
+| UI libraries | None — native CSS tokens (light/dark), `<dialog>`, Popover API, inline SVG sprite; DOM built with `createElement` (`h()` helper) |
 
 **Structure**: Root holds `manifest.json`, `popup.html`; `js/` managers + service worker; `css/popup.css`; `locales/en.json`; `icons/`; `tests/selftest.mjs`.
 → Full diagram: `docs/architecture/overview.md`
@@ -69,15 +69,16 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 1. Clone `https://github.com/TareqNet/TwinKey`.
 2. Open `chrome://extensions/`, enable Developer mode, click "Load unpacked", select the repo root.
 3. Pin the extension. Set a PIN/password on first open — all secrets are encrypted with it.
-4. Click "+" to add an account; click a code to copy it; use folders and drag-and-drop to organize.
+4. Click "Add" to add an account; click a code to copy it; drag the grip onto a folder or between cards; `/` focuses search.
 
 ---
 
 ## Features (Current)
 
 - **Security**: PIN/password login (≥ 6 for new PINs), AES-256-GCM secrets, PBKDF2-SHA256 600k iterations (versioned, auto-upgrade from 100k), lockout after 5 failures, Change PIN, full wipe on 60 s auto-lock.
-- **Accounts**: add / edit / delete, one-click copy, 30s countdown, "last used" tracking.
-- **Organization**: folders sidebar, search, sort (custom, name, service, date, last used), drag-and-drop reorder.
+- **Accounts**: add / edit / delete (confirm dialog), click-to-copy code, one global 30 s countdown ring, move up/down from the card menu, "last used" tracking.
+- **Organization**: folders sidebar with icons (folder select under 600 px), search, sort (custom, name, service, date, last used), drag-and-drop reorder and move-to-folder.
+- **Appearance**: Refined Minimal design, System / Light / Dark theme (`otp_settings.theme`), WCAG AA contrast, keyboard-accessible dialogs and menus.
 - **Data**: settings modal, storage stats, JSON export/import v1.2 (plain or password-encrypted with KDF params in file; replace or merge; legacy v1.1 recovery).
 - **Window**: "Open in New Window" (header + login screen); login-screen button hands off auth once (`twinkey_handoff`, 10 s TTL).
 - **i18n**: English only (`locales/en.json`); `data-i18n` attributes + `window.i18n.t()`. Arabic removed 2025-08-29.
@@ -93,10 +94,10 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 |---|----------|-------|----------|
 | 1 | ~~Critical~~ Fixed 2026-10-20 | Encrypted export/import overwrote vault auth keys — fixed by pure `deriveKey()` + export v1.2 | `js/storage.js` |
 | 2 | ~~Critical~~ Fixed 2026-10-20 | Export salt not stored — v1.2 stores `kdf`; v1.1 opened via vault salt candidates | `js/storage.js` |
-| 3 | Low | Popup loads Bootstrap CSS/Icons from CDN — not fully offline despite `offline_enabled: true` | `popup.html` |
+| 3 | ~~Low~~ Fixed 2026-10-20 | Bootstrap CDN removed — fully offline, CSP has no external hosts | `popup.html` |
 | 4 | ~~Low~~ Fixed 2026-10-20 | Unused permissions and `web_accessible_resources` removed; permissions now `storage`, `contextMenus` | `manifest.json` |
 | 5 | ~~Low~~ Fixed 2026-10-20 | Dead WebAuthn/system-auth code and legacy `app.js` / `ui.js` / `styles.css` removed | `js/crypto.js` |
-| 7 | Medium | Toolbar popup body is 1100×850 but Chrome caps popups at 800×600 — header buttons clipped (confirmed in headless Chrome) | `css/popup.css` |
+| 7 | ~~Medium~~ Fixed 2026-10-20 | Toolbar popup clipped at 1100×850 — now 780×560; detached window fills its window | `css/popup.css` |
 | 6 | ~~Low~~ Fixed 2026-10-20 | Large-payload `btoa` overflow — chunked `bytesToBase64()` | `js/crypto.js` |
 
 > 💡 Tip: Run `node tests/selftest.mjs` after any change to `js/crypto.js`, `js/storage.js` or `js/totp.js`.
@@ -111,14 +112,14 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 - QR scanning removed (reason not recorded) — ADR-004.
 - Export key is standalone; KDF params stored in the file; vault salts archived before replacement — ADR-005.
 - Escape every template interpolation + strict CSP — ADR-006.
+- Native CSS + `<dialog>` + Popover, no UI framework; DOM built without `innerHTML` — ADR-007.
 → Full ADRs: `docs/architecture/decisions.md`
 
 ---
 
 ## Future Considerations
 
-1. Remove Bootstrap CDN for true offline mode (UI redesign).
-2. Encrypted cloud backup; companion mobile app.
+1. Encrypted cloud backup; companion mobile app.
 3. Performance for 1000+ accounts.
 
 ---
@@ -155,6 +156,7 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 | Date | # | Type | Title | Description | File | Ticket |
 |------|---|------|-------|-------------|------|--------|
+| 20261020 | 07 | Feature | UI Redesign | Refined Minimal UI, light/dark themes, Bootstrap removed, strict CSP, accessible dialogs/menus | [↗](docs/history/20261020-07-ui-redesign.md) | — |
 | 20261020 | 06 | Bug | Functional Bugs + Cleanup | TOTP null on error, period-based refresh, secret cache, search+folder+sort, i18n placeholders, dead code, permissions | [↗](docs/history/20261020-06-functional-bugs-cleanup.md) | — |
 | 20261020 | 05 | Bug | Auth Hardening | 600k KDF with migration, lockout, Change PIN, PIN ≥ 6, full lock wipe, no plaintext verifier | [↗](docs/history/20261020-05-auth-hardening.md) | — |
 | 20261020 | 04 | Bug | Critical Security Fixes | Export vault loss, stored XSS, CSP, fail-closed storage, import validation, listener duplication | [↗](docs/history/20261020-04-critical-security-fixes.md) | — |

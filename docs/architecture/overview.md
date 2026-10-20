@@ -17,17 +17,17 @@ last_updated: 2026-10-20
         │                                  │
         ▼                                  ▼
 [popup.html] ◄── chrome.windows.create ── [js/background.js — service worker]
-  │  (or detached 1100×850 popup window)     └── onInstalled: context menu, open popup on install
-  ├── js/bootstrap-minimal.js  (Modal / Toast / Dropdown)
+  │  (780×560 popup, or popup.html?window=1)  └── onInstalled: context menu, open popup on install
+  ├── css/popup.css            (design tokens, light/dark, layout)
   ├── js/i18n.js               (I18nManager, locales/en.json)
   ├── js/totp.js               (TOTPGenerator, RFC 6238)
   ├── js/crypto.js             (CryptoManager, PBKDF2 + AES-256-GCM)
   ├── js/storage.js            (StorageManager)
-  └── js/popup.js              (PopupManager — controller, auth flow, UI)
+  └── js/popup.js              (PopupManager — lock screen, grid, dialogs, h() DOM builder)
         │
         ▼
 [chrome.storage.local]   fallback → [localStorage] (non-extension dev)
-[chrome.storage.session] temp_auth_password (one-shot, new-window auto-login)
+[chrome.storage.session] twinkey_handoff (one-shot, 10 s, "Unlock in a new window")
 ```
 
 ---
@@ -36,13 +36,13 @@ last_updated: 2026-10-20
 
 | Component | Role | Tech |
 |-----------|------|------|
-| `PopupManager` (`js/popup.js`) | App controller: login/setup screens, account/folder rendering, drag-and-drop, settings, export/import, new-window | Vanilla JS, DOM event delegation |
+| `PopupManager` (`js/popup.js`) | Lock/setup screen, folder sidebar, card grid, global countdown, context menu, dialogs, drag-and-drop, settings, export/import, theme | Vanilla JS, `createElement` only |
 | `CryptoManager` (`js/crypto.js`) | Key derivation, verification-token auth, encrypt/decrypt secrets | Web Crypto API |
 | `StorageManager` (`js/storage.js`) | CRUD for accounts/folders/settings, export/import, stats | `chrome.storage.local` / `localStorage` |
 | `TOTPGenerator` (`js/totp.js`) | Base32 decode, HMAC-SHA1, 6-digit / 30s codes | Web Crypto API |
 | `I18nManager` (`js/i18n.js`) | `data-i18n` attribute translation, `window.i18n.t()` | JSON locale files |
 | Service worker (`js/background.js`) | Context menu "Open Twin Key"; opens popup on install | MV3 service worker |
-| UI shell (`popup.html`, `css/popup.css`) | 850px popup layout, modals | Bootstrap 5.3.0 CSS + Icons from jsdelivr CDN |
+| UI shell (`popup.html`, `css/popup.css`) | Refined Minimal layout, `<dialog>`s, `popover` menu, SVG sprite | Native CSS custom properties |
 
 > 💡 Tip: `window.popupManager` exposes the controller for DevTools debugging.
 
@@ -54,7 +54,7 @@ last_updated: 2026-10-20
 |-----|---------|-----------|
 | `otp_accounts` | Array of accounts `{id, name, service, email, secret, folderId, encrypted, lastUsed, createdAt, ...}` | `secret` only |
 | `otp_folders` | Array of folders `{id, name, parentId, createdAt}`; `uncategorized` is permanent | No |
-| `otp_settings` | Theme, sort, refresh options, `lastBackup` | No |
+| `otp_settings` | `theme` (`auto` / `light` / `dark`) plus legacy display options | No |
 | `twinkey_salt` | PBKDF2 salt (16 bytes, comma-joined) | No |
 | `twinkey_kdf_iter` | PBKDF2 iterations for the vault key (missing = legacy 100,000; current 600,000) | No |
 | `twinkey_verify_token` | Verification UUID encrypted with the master key — login succeeds when it decrypts | Yes |
@@ -81,10 +81,9 @@ last_updated: 2026-10-20
 
 | Service | Direction | Protocol | Purpose |
 |---------|-----------|----------|---------|
-| cdn.jsdelivr.net | outbound | HTTPS (CSS/fonts) | Bootstrap 5.3.0 CSS + Bootstrap Icons 1.11.0 |
 | Clipboard API | local | Browser API | Copy codes |
 
-No backend, no telemetry, no sync.
+No backend, no telemetry, no sync, no external requests.
 
 ---
 

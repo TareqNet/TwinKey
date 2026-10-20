@@ -50,7 +50,7 @@ feature/{slug}
 
 | Field | Production | Staging | Development |
 |-------|-----------|---------|-------------|
-| URL | Not on Chrome Web Store | N/A | `chrome-extension://<id>/popup.html` |
+| URL | Not on Chrome Web Store | N/A | `chrome-extension://<id>/popup.html` (`?window=1` = detached) |
 | Storage | `chrome.storage.local` | N/A | `chrome.storage.local`, or `localStorage` when opened outside the extension |
 | Deploy method | Load unpacked (repo root) | N/A | Load unpacked + "Reload" |
 
@@ -72,7 +72,7 @@ python3 -m http.server 8000
 | Permissions | `storage`, `contextMenus` |
 | `host_permissions` | none |
 | Service worker | `js/background.js` |
-| CSP | `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net` |
+| CSP | `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'` |
 | `web_accessible_resources` | none (removed 2026-10-20) |
 
 > 💡 Tip: Run `node tests/selftest.mjs` before every merge — it covers TOTP vectors, crypto, export/import and storage contracts.
@@ -81,14 +81,11 @@ python3 -m http.server 8000
 
 ## Key Services
 
-| Service | Version | Host | Purpose |
-|---------|---------|------|---------|
-| Bootstrap CSS | 5.3.0 | cdn.jsdelivr.net | Layout and components styling |
-| Bootstrap Icons | 1.11.0 | cdn.jsdelivr.net | Icon font |
+None — no CDN or external service. CSS, icons (inline SVG sprite) and scripts all ship in the extension.
 
 ---
 
 ## Backup & Recovery
 
-- **User data**: manual JSON export from Settings. Use the unencrypted option only (encrypted export is broken — see `PROJECT_MEMORY.md` Known Issues).
-- **Restore test**: never tested with encrypted files; unencrypted import path not runtime-tested on 2026-10-20.
+- **User data**: manual JSON export from Settings → Backup (v1.2: password-protected with 600k PBKDF2, or plain).
+- **Restore test**: encrypted export → import round-trip covered by `tests/selftest.mjs` and the 2026-10-20 headless browser run.
