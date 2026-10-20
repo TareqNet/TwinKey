@@ -11,7 +11,7 @@ class TOTPGenerator {
      * Generate TOTP code from secret key
      * @param {string} secret - Base32 encoded secret key
      * @param {number} timestamp - Optional timestamp (default: current time)
-     * @returns {Promise<string>} 6-digit TOTP code
+     * @returns {Promise<string|null>} 6-digit TOTP code, or null for an invalid secret
      */
     async generate(secret, timestamp = null) {
         try {
@@ -53,8 +53,9 @@ class TOTPGenerator {
             
             return otp;
         } catch (error) {
-            console.error("Error generating TOTP:", error);
-            return "000000";
+            // Never return a plausible-looking code for a bad secret
+            console.error("Error generating TOTP:", error.message);
+            return null;
         }
     }
 
@@ -112,7 +113,8 @@ class TOTPGenerator {
             const char = base32[i];
             const index = alphabet.indexOf(char);
             if (index === -1) {
-                throw new Error(`Invalid base32 character: ${char}`);
+                // Do not echo the character: it may be part of a secret
+                throw new Error("Invalid base32 character");
             }
             
             value = (value << 5) | index;

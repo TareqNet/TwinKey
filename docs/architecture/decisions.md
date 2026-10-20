@@ -16,6 +16,92 @@ last_updated: 2026-10-20
 
 ---
 
+## ADR-007 — Native CSS, `<dialog>` and Popover Instead of Bootstrap
+
+> Date: 2026-10-20
+> Status: Accepted (supersedes the Bootstrap-based UI)
+> Ticket: N/A
+
+**Context**
+
+The popup loaded Bootstrap 5.3 CSS and Bootstrap Icons from jsdelivr (~230 KB, no SRI, not offline) plus a custom JS shim for modals/dropdowns. Only ~60 utility classes were used; two palettes (BS4/BS5) were mixed; the CDN forced `'unsafe-inline'` and external hosts in the CSP.
+
+**Options Considered**
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Vendor Bootstrap locally | 30 min, no visual change | Design stays tied to Bootstrap, 230 KB, inline styles remain |
+| Native CSS tokens + `<dialog>` + Popover + SVG sprite | Offline, strict CSP, dark mode, focus handling for free | One-time rewrite of HTML/CSS/rendering |
+
+**Decision**
+
+Native CSS with design tokens, native `<dialog>` (focus trap, Esc, backdrop), Popover API for menus (light dismiss), inline SVG sprite. Rendering uses an `h()` DOM builder, so there is no `innerHTML` anywhere.
+
+**Consequences**
+
+- CSP: `style-src 'self'` — no inline `style` attributes in markup; JS styles via CSSOM only (`el.style.setProperty`).
+- `minimum_chrome_version` 116 (Popover 114).
+- New UI strings should go through `locales/en.json`.
+
+---
+
+## ADR-006 — Escape-at-Render + Strict CSP Against Stored HTML Injection
+
+> Date: 2026-10-20
+> Status: Accepted
+> Ticket: N/A
+
+**Context**
+
+Account and folder fields were interpolated raw into `innerHTML`. `script-src 'self'` blocked scripts but not injected `<style>`, `<form>`, `<img>` or `<iframe>`, so a crafted import file could exfiltrate live OTPs through CSS attribute selectors.
+
+**Options Considered**
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Sanitize on input only | One place | Existing stored data and future inputs stay unsafe |
+| `escapeHtml()` at every interpolation + strict CSP | Small diff, defense in depth | Every new template must remember to escape |
+| Rebuild DOM with `createElement` / `textContent` | Safe by construction | Large rewrite — planned with the UI redesign |
+
+**Decision**
+
+Escape every interpolation now, validate imports, remove `data-otp`, and tighten CSP (`default-src 'self'`, `frame-src 'none'`, `form-action 'none'`, `img-src 'self' data:`). Move to DOM construction in the UI redesign.
+
+**Consequences**
+
+- jsdelivr stays in `style-src` / `font-src` until Bootstrap is removed.
+- New templates must use `escapeHtml()` until the DOM rewrite lands.
+
+---
+
+## ADR-005 — Standalone Export Key With KDF Params in the File
+
+> Date: 2026-10-20
+> Status: Accepted (supersedes the v1.1 export design)
+> Ticket: N/A
+
+**Context**
+
+v1.1 encrypted exports reused `setupPasswordAuth()`, which overwrote the vault's salt and verifier and did not store the export salt. Vaults were lost and encrypted imports always failed.
+
+**Options Considered**
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Store salt + iterations in the file, derive with a pure `deriveKey()` | Portable, vault untouched | New file version (1.2) |
+| Reuse the vault key for exports | No extra password | File unreadable on another device or after PIN change |
+
+**Decision**
+
+Export v1.2 carries `kdf {name, hash, iterations: 600000, salt}`. Import derives a throwaway key and never writes auth keys. v1.1 files are opened by trying the current vault salt and archived salts (`twinkey_salt_archive`), because the bug wrote the export salt into the vault.
+
+**Consequences**
+
+- Any code that replaces `twinkey_salt` must first append the old value to `twinkey_salt_archive`, or v1.1 backups become unrecoverable.
+- Export passwords require ≥ 8 characters and confirmation.
+
+---
+
 ## ADR-004 — Remove QR Code Scanning
 
 > Date: 2025-12-15

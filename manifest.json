@@ -1,17 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Twin Key",
-  "description": "Secure TOTP manager with AES-256 encryption, drag-and-drop organization, and folder management",
+  "description": "Secure, offline TOTP authenticator: AES-256 encrypted secrets, folders, drag-and-drop, light and dark themes",
   "version": "1.0.0",
   "author": "Tareq Nassry <tareq@tareq.website>",
   "permissions": [
     "storage",
-    "activeTab",
-    "contextMenus",
-    "notifications",
-    "scripting"
+    "contextMenus"
   ],
-   "icons": {
+  "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
@@ -26,21 +23,9 @@
     "service_worker": "js/background.js"
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com;"
+    "extension_pages": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'"
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "css/*",
-        "js/*",
-        "locales/*"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
-  "minimum_chrome_version": "88",
+  "minimum_chrome_version": "116",
   "offline_enabled": true,
   "homepage_url": "https://github.com/TareqNet/TwinKey",
   "short_name": "Twin Key"
