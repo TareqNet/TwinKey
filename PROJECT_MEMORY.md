@@ -36,7 +36,7 @@ last_updated: "2026-10-20"
 No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100×850 popup window.
 → Components and data flow: `docs/architecture/overview.md`
 
-**Data flow**: PIN → PBKDF2 key → decrypt secret from `chrome.storage.local` → `TOTPGenerator` → code in UI.
+**Data flow**: PIN → PBKDF2 (600k) key → decrypt secret from `chrome.storage.local` → `TOTPGenerator` → code in UI.
 
 ---
 
@@ -75,7 +75,7 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 ## Features (Current)
 
-- **Security**: PIN/password login, AES-256-GCM secrets, PBKDF2-SHA256 100k iterations, verification-token check.
+- **Security**: PIN/password login (≥ 6 for new PINs), AES-256-GCM secrets, PBKDF2-SHA256 600k iterations (versioned, auto-upgrade from 100k), lockout after 5 failures, Change PIN, full wipe on 60 s auto-lock.
 - **Accounts**: add / edit / delete, one-click copy, 30s countdown, "last used" tracking.
 - **Organization**: folders sidebar, search, sort (custom, name, service, date, last used), drag-and-drop reorder.
 - **Data**: settings modal, storage stats, JSON export/import v1.2 (plain or password-encrypted with KDF params in file; replace or merge; legacy v1.1 recovery).
@@ -155,6 +155,7 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 | Date | # | Type | Title | Description | File | Ticket |
 |------|---|------|-------|-------------|------|--------|
+| 20261020 | 05 | Bug | Auth Hardening | 600k KDF with migration, lockout, Change PIN, PIN ≥ 6, full lock wipe, no plaintext verifier | [↗](docs/history/20261020-05-auth-hardening.md) | — |
 | 20261020 | 04 | Bug | Critical Security Fixes | Export vault loss, stored XSS, CSP, fail-closed storage, import validation, listener duplication | [↗](docs/history/20261020-04-critical-security-fixes.md) | — |
 | 20261020 | 03 | Feature | Remove QR Scanning | Content script, context menu and QR parser removed — impl 2025-12-15 (retroactive) | [↗](docs/history/20261020-03-remove-qr-scanning.md) | — |
 | 20261020 | 02 | Feature | Open in New Window | Detached 1100×850 window + session auto-login — impl 2025-09-11 / 2025-12-15 (retroactive) | [↗](docs/history/20261020-02-open-in-new-window.md) | — |

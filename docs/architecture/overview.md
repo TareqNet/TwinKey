@@ -58,19 +58,24 @@ last_updated: 2026-10-20
 | `otp_folders` | Array of folders `{id, name, parentId, createdAt}`; `uncategorized` is permanent | No |
 | `otp_settings` | Theme, sort, refresh options, `lastBackup` | No |
 | `twinkey_salt` | PBKDF2 salt (16 bytes, comma-joined) | No |
-| `twinkey_verify_token` | Verification UUID encrypted with the master key | Yes |
-| `twinkey_verify_plain` | Same UUID in plaintext — compared after decryption | No |
+| `twinkey_kdf_iter` | PBKDF2 iterations for the vault key (missing = legacy 100,000; current 600,000) | No |
+| `twinkey_verify_token` | Verification UUID encrypted with the master key — login succeeds when it decrypts | Yes |
+| `twinkey_verify_plain` | Legacy only: plaintext copy of the UUID; removed on first unlock after 2026-10-20 | No |
+| `twinkey_salt_archive` | Previous vault salts; lets v1.1 encrypted backups still be imported | No |
+| `twinkey_auth_failures` | `{count, lockedUntil}` — 30 s lockout after 5 failures, doubling, max 15 min | No |
+| `chrome.storage.session.twinkey_handoff` | `{password, expiresAt}` for "Open in New Window" from the login screen; deleted on read, 10 s TTL | No (memory-only area) |
 
 ---
 
 ## Data Flow
 
-1. **Setup**: user sets PIN → random 16-byte salt → PBKDF2-SHA256 (100,000 iterations) → AES-256-GCM key → random UUID encrypted → salt + encrypted/plain token stored.
-2. **Login**: PIN + stored salt → key → decrypt `twinkey_verify_token` → match `twinkey_verify_plain` → key kept in memory.
+1. **Setup**: user sets PIN (≥ 6 chars, confirmed) → random 16-byte salt → PBKDF2-SHA256 (600,000 iterations) → AES-256-GCM key → random UUID encrypted → salt, encrypted token and `twinkey_kdf_iter` stored.
+2. **Login**: lockout check → PIN + stored salt + iterations → key → `twinkey_verify_token` must decrypt → key kept in memory. Then: plaintext accounts encrypted; legacy 100k vaults re-encrypted at 600k (`rekeyVault`, one storage write).
 3. **Add account**: secret encrypted with the in-memory key (random 12-byte IV prepended, base64) → saved in `otp_accounts`.
 4. **Display**: secret decrypted → `TOTPGenerator` → code + countdown refreshed every second.
-5. **Logout / close**: in-memory key discarded; nothing persisted except encrypted data.
-6. **New window**: password written to `chrome.storage.session.temp_auth_password` → new window reads it, logs in, removes it.
+5. **Lock (60 s idle) / close**: key discarded, code updater stopped, rendered accounts/folders and open forms wiped.
+6. **New window**: from the login screen only — `twinkey_handoff` written with a 10 s expiry; the new window deletes it before use. From the header, the new window asks for the PIN.
+7. **Change PIN**: verify current PIN → `rekeyVault(newPin)` decrypts all, re-encrypts under a new salt, archives the old salt, writes accounts + verifier in one call.
 
 ---
 
@@ -87,6 +92,6 @@ No backend, no telemetry, no sync.
 
 ## Notes
 
-> ⚠️ `CryptoManager.generateEncryptionKey(pw)` always runs `setupPasswordAuth()`, which writes the global auth keys. Any code path that needs a throwaway key (e.g., export encryption) must not call it — see Known Issue #1 in `PROJECT_MEMORY.md`.
+> ⚠️ Only `setupPasswordAuth()` and `StorageManager.rekeyVault()` may write `twinkey_salt` / `twinkey_verify_token`. Throwaway keys (export/import) use the pure `CryptoManager.deriveKey()`.
 
-> ⚠️ `encrypt()` output contains IV + ciphertext only, no salt. Ciphertext is decryptable only with the key derived from the stored `twinkey_salt`.
+> ⚠️ `encrypt()` output is base64(IV + ciphertext), no salt. Any code that replaces `twinkey_salt` must archive the old value in `twinkey_salt_archive` (ADR-005).

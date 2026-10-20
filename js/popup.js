@@ -59,6 +59,7 @@ class PopupManager {
                 const success = await this.cryptoManager.authenticateWithPassword(handoff.password);
                 if (success) {
                     this.isAuthenticated = true;
+                    await this.afterUnlock(handoff.password);
                     this.startActivityTracking(); // Start tracking immediately
                 }
             }
@@ -268,6 +269,15 @@ class PopupManager {
             radio.addEventListener("change", (e) => {
                 this.toggleExportPasswordSection(e.target.value === 'encrypted');
             });
+        });
+
+        document.getElementById("changePinBtn").addEventListener("click", () => {
+            this.handleChangePin();
+        });
+
+        document.getElementById("weakPinChangeBtn").addEventListener("click", () => {
+            this.showSettingsModal();
+            document.getElementById("currentPin").focus();
         });
 
         const importFile = document.getElementById("importFile");
@@ -1533,10 +1543,16 @@ class PopupManager {
             };
         }
 
-        // Enter key for setup password
+        // Enter key for setup password: move to confirmation, then submit
         const newPasswordInput = document.getElementById("newMasterPassword");
-        if (newPasswordInput) {
+        const confirmPasswordInput = document.getElementById("confirmMasterPassword");
+        if (newPasswordInput && confirmPasswordInput) {
             newPasswordInput.onkeypress = (e) => {
+                if (e.key === "Enter") {
+                    confirmPasswordInput.focus();
+                }
+            };
+            confirmPasswordInput.onkeypress = (e) => {
                 if (e.key === "Enter") {
                     this.setupPasswordAuth();
                 }
@@ -1553,7 +1569,8 @@ class PopupManager {
                 if (password) {
                     // Try to authenticate first
                     try {
-                        const success = await this.cryptoManager.authenticateWithPassword(password);
+                        // Throwaway manager: this popup closes, the new window derives its own key
+                        const success = await new CryptoManager().authenticateWithPassword(password);
                         if (success) {
                             // One-shot hand-off, read and deleted by the new window within seconds
                             if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
@@ -1567,8 +1584,7 @@ class PopupManager {
                             this.showToast("Invalid PIN/password", "error");
                         }
                     } catch (error) {
-                        console.error("Auth error:", error);
-                        this.showToast("Authentication failed", "error");
+                        this.showAuthError(error);
                     }
                 } else {
                     this.openInNewTab();
@@ -1613,22 +1629,88 @@ class PopupManager {
 
         try {
             const success = await this.cryptoManager.authenticateWithPassword(password);
+            passwordInput.value = '';
             if (success) {
                 this.isAuthenticated = true;
+                await this.afterUnlock(password);
                 this.hideAuthenticationModal();
                 await this.completeInitialization();
-                passwordInput.value = '';
+                this.toggleWeakPinBanner(password.length < PopupManager.MIN_PIN_LENGTH);
                 this.showToast("Authentication successful!", "success");
             } else {
                 this.showToast("Invalid PIN/password", "error");
-                passwordInput.value = '';
                 passwordInput.focus();
             }
         } catch (error) {
+            passwordInput.value = '';
+            this.showAuthError(error);
+            passwordInput.focus();
+        }
+    }
+
+    showAuthError(error) {
+        if (error && error.retryAfterMs) {
+            const seconds = Math.ceil(error.retryAfterMs / 1000);
+            this.showToast(`Too many failed attempts. Try again in ${seconds} s`, "error");
+        } else {
             console.error("Password auth error:", error);
             this.showToast("Authentication failed", "error");
-            passwordInput.value = '';
-            passwordInput.focus();
+        }
+    }
+
+    /**
+     * One-time vault maintenance after a successful unlock.
+     * Failures are logged, never block access.
+     */
+    async afterUnlock(password) {
+        try {
+            await this.storageManager.migratePlaintextSecrets();
+            if (this.cryptoManager.needsKdfUpgrade()) {
+                await this.storageManager.rekeyVault(password);
+            }
+        } catch (error) {
+            console.error("Vault upgrade skipped:", error);
+        }
+    }
+
+    toggleWeakPinBanner(show) {
+        const banner = document.getElementById("weakPinBanner");
+        if (banner) banner.classList.toggle("d-none", !show);
+    }
+
+    async handleChangePin() {
+        const currentInput = document.getElementById("currentPin");
+        const newInput = document.getElementById("newPin");
+        const confirmInput = document.getElementById("confirmNewPin");
+        const newPin = newInput.value;
+
+        if (newPin.length < PopupManager.MIN_PIN_LENGTH) {
+            this.showToast(`New PIN must be at least ${PopupManager.MIN_PIN_LENGTH} characters`, "error");
+            return;
+        }
+        if (newPin !== confirmInput.value) {
+            this.showToast("New PINs do not match", "error");
+            return;
+        }
+
+        try {
+            // Verify the current PIN on a throwaway manager (counts toward lockout)
+            const ok = await new CryptoManager().authenticateWithPassword(currentInput.value);
+            if (!ok) {
+                this.showToast("Current PIN is incorrect", "error");
+                return;
+            }
+            await this.storageManager.rekeyVault(newPin);
+            [currentInput, newInput, confirmInput].forEach(input => { input.value = ""; });
+            this.toggleWeakPinBanner(false);
+            this.showToast("PIN changed successfully", "success");
+        } catch (error) {
+            if (error.retryAfterMs) {
+                this.showAuthError(error);
+            } else {
+                console.error("Change PIN error:", error);
+                this.showToast(error.message || "Failed to change PIN", "error");
+            }
         }
     }
 
@@ -1655,14 +1737,20 @@ class PopupManager {
 
     async setupPasswordAuth() {
         const newPassword = document.getElementById("newMasterPassword").value.trim();
+        const confirmPassword = document.getElementById("confirmMasterPassword").value.trim();
 
         if (!newPassword) {
             this.showToast("Please enter a PIN or password", "error");
             return;
         }
 
-        if (newPassword.length < 3) {
-            this.showToast("PIN/Password must be at least 3 characters", "error");
+        if (newPassword.length < PopupManager.MIN_PIN_LENGTH) {
+            this.showToast(`PIN/Password must be at least ${PopupManager.MIN_PIN_LENGTH} characters`, "error");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            this.showToast("PINs do not match", "error");
             return;
         }
 
@@ -1734,8 +1822,20 @@ class PopupManager {
         this.isAuthenticated = false;
         this.cryptoManager.logout();
 
-        // Clear sensitive data from UI (optional, but good for security)
-        // We don't clear this.accounts to avoid re-fetching, but we will block access
+        // Stop code generation and wipe everything rendered from the vault
+        clearInterval(this.otpUpdater);
+        this.otpUpdater = null;
+        this.accounts = [];
+        this.filteredAccounts = [];
+        document.getElementById("accountsContainer").innerHTML = "";
+        document.getElementById("foldersList").innerHTML = "";
+        this.hideAddForm();
+        this.hideEditForm();
+        this.hideAddFolderForm();
+        this.hideExportOptionsModal();
+        this.hideSettingsModal();
+        ["currentPin", "newPin", "confirmNewPin", "exportPassword", "exportPasswordConfirm", "importPassword"]
+            .forEach(id => { const input = document.getElementById(id); if (input) input.value = ""; });
 
         // Show auth modal again
         this.showAuthenticationModal();
@@ -2042,6 +2142,9 @@ class PopupManager {
     }
 
 }
+
+// Minimum length for a new master PIN/password (existing shorter PINs still unlock, with a warning)
+PopupManager.MIN_PIN_LENGTH = 6;
 
 // Initialize popup when DOM is loaded
 document.addEventListener("DOMContentLoaded", () => {

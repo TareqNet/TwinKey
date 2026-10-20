@@ -734,11 +734,19 @@ class StorageManager {
         const current = await this.cryptoManager.getStoredSalt();
         if (current) salts.push(current);
 
+        (await this.getSaltArchive()).forEach(saltStr => salts.push(CryptoManager.saltFromString(saltStr)));
+        return salts;
+    }
+
+    /**
+     * Previous vault salts (comma-joined strings), oldest first.
+     * @returns {Promise<string[]>}
+     */
+    async getSaltArchive() {
         const archive = this.isExtension
             ? (await chrome.storage.local.get("twinkey_salt_archive")).twinkey_salt_archive
             : JSON.parse(localStorage.getItem("twinkey_salt_archive") || "[]");
-        (Array.isArray(archive) ? archive : []).forEach(saltStr => salts.push(CryptoManager.saltFromString(saltStr)));
-        return salts;
+        return Array.isArray(archive) ? archive.filter(item => typeof item === "string") : [];
     }
 
     /**
@@ -815,6 +823,73 @@ class StorageManager {
         }
 
         return { accounts, folders, settings, skipped };
+    }
+
+    /**
+     * Re-encrypt the whole vault under a new password / current KDF params.
+     * Accounts, salt, verifier and iteration count are written in ONE storage call.
+     * The old salt is archived first so v1.1 backups made with it stay importable.
+     * @param {string} newPassword
+     * @throws {Error} If not authenticated or any account cannot be decrypted (nothing is written)
+     */
+    async rekeyVault(newPassword) {
+        if (!this.canEncrypt()) {
+            throw new Error("Not authenticated");
+        }
+
+        const accounts = await this.getAccounts();
+        const plainSecrets = [];
+        for (const account of accounts) {
+            try {
+                plainSecrets.push(account.encrypted ? await this.cryptoManager.decrypt(account.secret) : account.secret);
+            } catch (error) {
+                throw new Error("Some accounts cannot be decrypted. Restore them from a backup or delete them first.");
+            }
+        }
+
+        const { key, iterations, items } = await this.cryptoManager.buildRekey(newPassword);
+        const reencrypted = [];
+        for (let i = 0; i < accounts.length; i++) {
+            reencrypted.push({
+                ...accounts[i],
+                secret: await this.cryptoManager.encryptWithKey(key, plainSecrets[i]),
+                encrypted: true
+            });
+        }
+
+        const current = await this.cryptoManager.getStoredSalt();
+        const archive = await this.getSaltArchive();
+        if (current && !archive.includes(CryptoManager.saltToString(current))) {
+            archive.push(CryptoManager.saltToString(current));
+        }
+
+        await this.setMany({ ...items, [this.accountsKey]: reencrypted, twinkey_salt_archive: archive });
+        this.cryptoManager.encryptionKey = key;
+        this.cryptoManager.kdfIterations = iterations;
+        // Legacy plaintext verifier: same token value was reused, so leftovers still match if this fails
+        await this.cryptoManager.storageRemove(["twinkey_verify_plain"]);
+    }
+
+    /**
+     * Encrypt accounts still stored in plaintext (created before encryption existed).
+     * @returns {Promise<number>} Number of accounts migrated
+     */
+    async migratePlaintextSecrets() {
+        if (!this.canEncrypt()) return 0;
+
+        const accounts = await this.getAccounts();
+        let migrated = 0;
+        for (const account of accounts) {
+            if (!account.encrypted && typeof account.secret === "string" && account.secret) {
+                account.secret = await this.cryptoManager.encrypt(account.secret);
+                account.encrypted = true;
+                migrated++;
+            }
+        }
+        if (migrated) {
+            await this.saveAccounts(accounts);
+        }
+        return migrated;
     }
 
     /**

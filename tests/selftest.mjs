@@ -55,6 +55,20 @@ async function newVault(pin) {
     return { ...env, crypto, storage };
 }
 
+// Reproduce the pre-2026-10-20 setupPasswordAuth(): 100k iterations, plaintext verifier, no kdf_iter.
+// The old export code called this with the export password, which overwrote the vault salt.
+async function legacySetup(env, crypto, password) {
+    const salt = crypto.generateSalt();
+    const key = await crypto.deriveKey(password, salt, 100000);
+    const token = globalThis.crypto.randomUUID();
+    await env.local.set({
+        twinkey_salt: Array.from(salt).join(","),
+        twinkey_verify_token: await crypto.encryptWithKey(key, token),
+        twinkey_verify_plain: token
+    });
+    return key;
+}
+
 const SECRET = "JBSWY3DPEHPK3PXP";
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
@@ -120,26 +134,106 @@ test("Wrong import password fails and leaves vault untouched", async () => {
     assert.deepEqual(target.local.dump(), before);
 });
 
-test("Legacy v1.1 encrypted backup (salt not stored) can be recovered", async () => {
-    // Reproduce the old bug: export ran setupPasswordAuth(exportPw), overwriting the vault salt,
-    // then encrypted the payload with that key and did not store the salt in the file.
-    const vault = await newVault("123456");
-    const exportCrypto = new vault.ctx.CryptoManager();
-    await exportCrypto.setupPasswordAuth("legacy-pass");
+test("Legacy v1.1 backup is recovered, even after the vault was upgraded", async () => {
+    const env = loadExtension();
+    const crypto = new env.ctx.CryptoManager();
+    const storage = new env.ctx.StorageManager();
+    await storage.initializeCrypto(crypto);
+
+    // Old vault with PIN 1234, then the buggy v1.1 export with "legacy-pass"
+    await legacySetup(env, crypto, "1234");
+    const exportKey = await legacySetup(env, crypto, "legacy-pass");
     const payload = { accounts: [{ id: "acc1", name: "Old", service: "Other", email: "", secret: SECRET, encrypted: false }], folders: [], settings: {} };
-    const legacyFile = { exportedAt: new Date().toISOString(), version: "1.1", encrypted: true, encryptedData: await exportCrypto.encrypt(JSON.stringify(payload)) };
+    const legacyFile = { exportedAt: new Date().toISOString(), version: "1.1", encrypted: true, encryptedData: await crypto.encryptWithKey(exportKey, JSON.stringify(payload)) };
 
-    // After the bug only the export password unlocks the vault
-    const victim = new vault.ctx.CryptoManager();
-    assert.equal(await victim.authenticateWithPassword("legacy-pass"), true);
-    vault.storage.cryptoManager = victim;
+    // After the bug only the export password unlocks; unlocking upgrades the KDF (salt replaced)
+    assert.equal(await crypto.authenticateWithPassword("1234"), false);
+    assert.equal(await crypto.authenticateWithPassword("legacy-pass"), true);
+    assert.equal(crypto.needsKdfUpgrade(), true);
+    await storage.rekeyVault("legacy-pass");
+    assert.equal(env.local.dump().twinkey_salt_archive.length, 1, "old salt archived");
 
-    const saltBefore = vault.local.dump().twinkey_salt;
-    const summary = await vault.storage.importData(legacyFile, "legacy-pass", "replace");
+    const summary = await storage.importData(legacyFile, "legacy-pass", "replace");
     assert.equal(summary.accounts, 1);
-    assert.equal(vault.local.dump().twinkey_salt, saltBefore);
-    const [account] = await vault.storage.getAccounts();
-    assert.equal(await vault.storage.getDecryptedSecret(account.id), SECRET);
+    const [account] = await storage.getAccounts();
+    assert.equal(await storage.getDecryptedSecret(account.id), SECRET);
+});
+
+test("Legacy vault: plaintext secrets migrated, KDF upgraded to 600k, PIN unchanged", async () => {
+    const env = loadExtension();
+    const crypto = new env.ctx.CryptoManager();
+    const storage = new env.ctx.StorageManager();
+    await storage.initializeCrypto(crypto);
+    const oldKey = await legacySetup(env, crypto, "1234");
+    await env.local.set({ otp_accounts: [
+        { id: "enc", name: "Enc", service: "Other", email: "", secret: await crypto.encryptWithKey(oldKey, SECRET), encrypted: true },
+        { id: "plain", name: "Plain", service: "Other", email: "", secret: SECRET, encrypted: false }
+    ] });
+
+    assert.equal(await crypto.authenticateWithPassword("1234"), true);
+    assert.equal(await storage.migratePlaintextSecrets(), 1);
+    await storage.rekeyVault("1234");
+
+    const stored = env.local.dump();
+    assert.equal(stored.twinkey_kdf_iter, 600000);
+    assert.equal("twinkey_verify_plain" in stored, false, "plaintext verifier removed");
+    assert.equal(JSON.stringify(stored).includes(SECRET), false, "no plaintext secret left");
+    assert.equal(crypto.needsKdfUpgrade(), false);
+
+    const fresh = new env.ctx.CryptoManager();
+    assert.equal(await fresh.authenticateWithPassword("1234"), true);
+    storage.cryptoManager = fresh;
+    assert.equal(await storage.getDecryptedSecret("enc"), SECRET);
+    assert.equal(await storage.getDecryptedSecret("plain"), SECRET);
+});
+
+test("New setup uses 600k iterations and stores no plaintext verifier", async () => {
+    const vault = await newVault("123456");
+    const stored = vault.local.dump();
+    assert.equal(stored.twinkey_kdf_iter, 600000);
+    assert.equal("twinkey_verify_plain" in stored, false);
+    assert.equal(await new vault.ctx.CryptoManager().authenticateWithPassword("123456"), true);
+});
+
+test("Change PIN re-encrypts the vault", async () => {
+    const vault = await newVault("111111");
+    const id = await vault.storage.addAccount({ name: "A", service: "Other", email: "", secret: SECRET });
+    await vault.storage.rekeyVault("222222");
+
+    assert.equal(await new vault.ctx.CryptoManager().authenticateWithPassword("111111"), false);
+    const fresh = new vault.ctx.CryptoManager();
+    assert.equal(await fresh.authenticateWithPassword("222222"), true);
+    vault.storage.cryptoManager = fresh;
+    assert.equal(await vault.storage.getDecryptedSecret(id), SECRET);
+});
+
+test("Rekey aborts and writes nothing when an account cannot be decrypted", async () => {
+    const vault = await newVault("111111");
+    await vault.storage.addAccount({ name: "A", service: "Other", email: "", secret: SECRET });
+    const other = await newVault("999999");
+    const foreign = await other.crypto.encrypt(SECRET);
+    const accounts = await vault.storage.getAccounts();
+    accounts[0].secret = foreign;
+    await vault.local.set({ otp_accounts: accounts });
+
+    const before = vault.local.dump();
+    await assert.rejects(() => vault.storage.rekeyVault("222222"), /cannot be decrypted/);
+    assert.deepEqual(vault.local.dump(), before);
+});
+
+test("Lockout after 5 failed attempts, cleared by a later success", async () => {
+    const vault = await newVault("123456");
+    const crypto = new vault.ctx.CryptoManager();
+    for (let i = 0; i < 5; i++) {
+        assert.equal(await crypto.authenticateWithPassword("000000"), false);
+    }
+    await assert.rejects(() => crypto.authenticateWithPassword("123456"), error => error.retryAfterMs > 25000);
+
+    // Simulate the lockout expiring
+    const failures = vault.local.dump().twinkey_auth_failures;
+    await vault.local.set({ twinkey_auth_failures: { ...failures, lockedUntil: Date.now() - 1 } });
+    assert.equal(await crypto.authenticateWithPassword("123456"), true);
+    assert.equal("twinkey_auth_failures" in vault.local.dump(), false);
 });
 
 test("validateImport rejects bad shapes and sanitizes fields", async () => {

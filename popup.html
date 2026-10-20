@@ -79,6 +79,11 @@
                 </div>
             </div>
             
+            <div class="alert alert-warning d-flex justify-content-between align-items-center m-2 py-2 small d-none" id="weakPinBanner">
+                <span>Your PIN is shorter than 6 characters.</span>
+                <button type="button" class="btn btn-sm btn-outline-dark" id="weakPinChangeBtn">Change PIN</button>
+            </div>
+
             <div class="accounts-container" id="accountsContainer">
                 <div class="text-center text-muted py-4" id="emptyState">
                     <i class="bi bi-inbox display-6"></i>
@@ -255,7 +260,7 @@
                     <div id="passwordSection">
                         <div class="mb-3">
                             <label for="masterPassword" class="form-label">Enter PIN/Password</label>
-                            <input type="password" class="form-control" id="masterPassword" placeholder="Enter your PIN or password" maxlength="20">
+                            <input type="password" class="form-control" id="masterPassword" placeholder="Enter your PIN or password" maxlength="64" autocomplete="current-password">
                         </div>
                         <button type="button" class="btn btn-success w-100 mb-2" id="passwordAuthBtn">
                             <i class="bi bi-unlock me-2"></i>
@@ -276,9 +281,10 @@
                         
                         <div class="mb-3">
                             <label for="newMasterPassword" class="form-label">Create PIN/Password</label>
-                            <input type="password" class="form-control mb-2" id="newMasterPassword" placeholder="Enter a 4-8 digit PIN or password" maxlength="20">
+                            <input type="password" class="form-control mb-2" id="newMasterPassword" placeholder="At least 6 characters" maxlength="64" autocomplete="new-password">
+                            <input type="password" class="form-control mb-2" id="confirmMasterPassword" placeholder="Confirm PIN/password" maxlength="64" autocomplete="new-password">
                             <div class="small text-muted">
-                                Use a simple PIN (like 1234) or short password for quick access
+                                Longer is safer: this PIN is the only thing protecting your secrets if your device is compromised.
                             </div>
                         </div>
                         
@@ -351,6 +357,21 @@
                             <input type="password" class="form-control form-control-sm" id="importPassword" placeholder="Enter the password used during export">
                             <div class="form-text">This file was encrypted during export. Enter the password to decrypt it.</div>
                         </div>
+                    </div>
+
+                    <!-- Change PIN Section -->
+                    <div class="mb-4">
+                        <h6 class="mb-3">
+                            <i class="bi bi-key me-2"></i>
+                            Change PIN
+                        </h6>
+                        <input type="password" class="form-control form-control-sm mb-2" id="currentPin" placeholder="Current PIN" autocomplete="current-password">
+                        <input type="password" class="form-control form-control-sm mb-2" id="newPin" placeholder="New PIN (at least 6 characters)" autocomplete="new-password">
+                        <input type="password" class="form-control form-control-sm mb-2" id="confirmNewPin" placeholder="Confirm new PIN" autocomplete="new-password">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="changePinBtn">
+                            <i class="bi bi-key me-1"></i>
+                            Change PIN
+                        </button>
                     </div>
 
                     <!-- Statistics Section -->
