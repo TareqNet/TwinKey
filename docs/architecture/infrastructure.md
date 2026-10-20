@@ -68,14 +68,14 @@ python3 -m http.server 8000
 |-------|-------|
 | `manifest_version` | 3 |
 | `version` | 1.0.0 |
-| `minimum_chrome_version` | 88 |
-| Permissions | `storage`, `activeTab`, `contextMenus`, `notifications`, `scripting` |
+| `minimum_chrome_version` | 116 |
+| Permissions | `storage`, `contextMenus` |
 | `host_permissions` | none |
 | Service worker | `js/background.js` |
-| CSP `style-src` | `'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com` |
-| `web_accessible_resources` | `css/*`, `js/*`, `locales/*` to `<all_urls>` |
+| CSP | `default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net` |
+| `web_accessible_resources` | none (removed 2026-10-20) |
 
-> ⚠️ Note: `activeTab` and `scripting` have no callers since the content script was removed (2025-12-15). `web_accessible_resources` was needed only by the content script. Both are candidates for removal.
+> 💡 Tip: Run `node tests/selftest.mjs` before every merge — it covers TOTP vectors, crypto, export/import and storage contracts.
 
 ---
 

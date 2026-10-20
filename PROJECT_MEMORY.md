@@ -45,12 +45,12 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 | Field | Value |
 |-------|-------|
 | Language(s) | Vanilla JavaScript (ES2020+), HTML5, CSS3 |
-| Platform | Chrome Extension Manifest V3, `minimum_chrome_version` 88 |
+| Platform | Chrome Extension Manifest V3, `minimum_chrome_version` 116 |
 | Pattern | Class-per-concern managers (`CryptoManager`, `StorageManager`, `PopupManager`, `TOTPGenerator`) |
-| Package Manager | None — no build step, no npm dependencies |
+| Package Manager | None — no build step, no npm dependencies. Tests: `node tests/selftest.mjs` (Node 20+) |
 | UI libraries | Bootstrap 5.3.0 CSS + Bootstrap Icons 1.11.0 via jsdelivr CDN; `js/bootstrap-minimal.js` for Modal/Toast/Dropdown JS |
 
-**Structure**: Root holds `manifest.json`, `popup.html`; `js/` managers + service worker; `css/popup.css`; `locales/en.json`; `icons/`.
+**Structure**: Root holds `manifest.json`, `popup.html`; `js/` managers + service worker; `css/popup.css`; `locales/en.json`; `icons/`; `tests/selftest.mjs`.
 → Full diagram: `docs/architecture/overview.md`
 
 ---
@@ -94,8 +94,9 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 | 1 | ~~Critical~~ Fixed 2026-10-20 | Encrypted export/import overwrote vault auth keys — fixed by pure `deriveKey()` + export v1.2 | `js/storage.js` |
 | 2 | ~~Critical~~ Fixed 2026-10-20 | Export salt not stored — v1.2 stores `kdf`; v1.1 opened via vault salt candidates | `js/storage.js` |
 | 3 | Low | Popup loads Bootstrap CSS/Icons from CDN — not fully offline despite `offline_enabled: true` | `popup.html` |
-| 4 | Low | `scripting` and `activeTab` permissions unused since QR removal; `web_accessible_resources` exposes `js/*` to `<all_urls>` | `manifest.json` |
-| 5 | Low | Dead code: WebAuthn/biometric + "system auth" (`prompt()`) paths; `js/app.js`, `js/ui.js`, `css/styles.css` not loaded by `popup.html` | `js/crypto.js`, legacy files |
+| 4 | ~~Low~~ Fixed 2026-10-20 | Unused permissions and `web_accessible_resources` removed; permissions now `storage`, `contextMenus` | `manifest.json` |
+| 5 | ~~Low~~ Fixed 2026-10-20 | Dead WebAuthn/system-auth code and legacy `app.js` / `ui.js` / `styles.css` removed | `js/crypto.js` |
+| 7 | Medium | Toolbar popup body is 1100×850 but Chrome caps popups at 800×600 — header buttons clipped (confirmed in headless Chrome) | `css/popup.css` |
 | 6 | ~~Low~~ Fixed 2026-10-20 | Large-payload `btoa` overflow — chunked `bytesToBase64()` | `js/crypto.js` |
 
 > 💡 Tip: Run `node tests/selftest.mjs` after any change to `js/crypto.js`, `js/storage.js` or `js/totp.js`.
@@ -116,10 +117,9 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 ## Future Considerations
 
-1. Bundle Bootstrap locally for true offline mode; drop unused permissions.
-2. Remove dead WebAuthn/system-auth code and legacy web-app files.
-3. Encrypted cloud backup; companion mobile app.
-4. Performance for 1000+ accounts.
+1. Remove Bootstrap CDN for true offline mode (UI redesign).
+2. Encrypted cloud backup; companion mobile app.
+3. Performance for 1000+ accounts.
 
 ---
 
@@ -155,6 +155,7 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 | Date | # | Type | Title | Description | File | Ticket |
 |------|---|------|-------|-------------|------|--------|
+| 20261020 | 06 | Bug | Functional Bugs + Cleanup | TOTP null on error, period-based refresh, secret cache, search+folder+sort, i18n placeholders, dead code, permissions | [↗](docs/history/20261020-06-functional-bugs-cleanup.md) | — |
 | 20261020 | 05 | Bug | Auth Hardening | 600k KDF with migration, lockout, Change PIN, PIN ≥ 6, full lock wipe, no plaintext verifier | [↗](docs/history/20261020-05-auth-hardening.md) | — |
 | 20261020 | 04 | Bug | Critical Security Fixes | Export vault loss, stored XSS, CSP, fail-closed storage, import validation, listener duplication | [↗](docs/history/20261020-04-critical-security-fixes.md) | — |
 | 20261020 | 03 | Feature | Remove QR Scanning | Content script, context menu and QR parser removed — impl 2025-12-15 (retroactive) | [↗](docs/history/20261020-03-remove-qr-scanning.md) | — |

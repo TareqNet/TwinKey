@@ -84,6 +84,47 @@ test("TOTP matches RFC 6238 SHA-1 vectors", async () => {
     }
 });
 
+test("TOTP returns null (not a fake code) for an invalid secret", async () => {
+    const { ctx } = loadExtension();
+    assert.equal(await new ctx.TOTPGenerator().generate("not base32!"), null);
+});
+
+test("Secret cache is bypassed and cleared once the vault locks", async () => {
+    const vault = await newVault("123456");
+    const id = await vault.storage.addAccount({ name: "A", service: "Other", email: "", secret: SECRET });
+    const account = await vault.storage.getAccount(id);
+    assert.equal(await vault.storage.decryptAccountSecret(account), SECRET);
+    assert.equal(vault.storage.secretCache.size, 1);
+
+    vault.crypto.logout();
+    assert.equal(await vault.storage.decryptAccountSecret(account), null);
+    assert.equal(vault.storage.secretCache.size, 0);
+});
+
+test("Folder icon is persisted and restricted to the allowlist", async () => {
+    const vault = await newVault("123456");
+    await vault.storage.addFolder({ id: "work", name: "Work", icon: "bi-briefcase" });
+    await vault.storage.addFolder({ id: "bad", name: "Bad", icon: "bi-x\" onload=\"" });
+    const byId = Object.fromEntries((await vault.storage.getFolders()).map(f => [f.id, f]));
+    assert.equal(byId.work.icon, "bi-briefcase");
+    assert.equal(byId.bad.icon, "bi-folder");
+});
+
+test("i18n fills {{placeholders}} and keeps string fallbacks", async () => {
+    const context = {
+        document: { querySelectorAll: () => [] },
+        fetch: async () => ({ json: async () => ({ copied: "OTP code copied for {{name}}" }) }),
+        console
+    };
+    context.window = context;
+    vm.createContext(context);
+    vm.runInContext(readFileSync(join(root, "js/i18n.js"), "utf8"), context);
+    await context.window.i18n.ready;
+    assert.equal(context.window.i18n.t("copied", { name: "GitHub" }), "OTP code copied for GitHub");
+    assert.equal(context.window.i18n.t("missing", "Fallback"), "Fallback");
+    assert.equal(context.window.i18n.t("missing"), "missing");
+});
+
 test("Encrypted export does not touch the vault auth keys", async () => {
     const vault = await newVault("123456");
     await vault.storage.addAccount({ name: "Google", service: "Google", email: "a@b.c", secret: SECRET });

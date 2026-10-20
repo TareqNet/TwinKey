@@ -6,12 +6,9 @@
   "author": "Tareq Nassry <tareq@tareq.website>",
   "permissions": [
     "storage",
-    "activeTab",
-    "contextMenus",
-    "notifications",
-    "scripting"
+    "contextMenus"
   ],
-   "icons": {
+  "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
@@ -28,19 +25,7 @@
   "content_security_policy": {
     "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'none'; img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src https://cdn.jsdelivr.net"
   },
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "css/*",
-        "js/*",
-        "locales/*"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
-  "minimum_chrome_version": "88",
+  "minimum_chrome_version": "116",
   "offline_enabled": true,
   "homepage_url": "https://github.com/TareqNet/TwinKey",
   "short_name": "Twin Key"

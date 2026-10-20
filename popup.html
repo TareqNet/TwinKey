@@ -127,7 +127,7 @@
             </div>
             <div class="mb-2">
                 <label for="accountEmail" class="form-label form-label-sm" data-i18n="email">Email</label>
-                <input type="email" class="form-control form-control-sm" id="accountEmail" required>
+                <input type="text" class="form-control form-control-sm" id="accountEmail" autocomplete="off">
             </div>
             <div class="mb-2">
                 <label for="accountFolder" class="form-label form-label-sm">Folder</label>
@@ -137,7 +137,7 @@
             </div>
             <div class="mb-3">
                 <label for="secretKey" class="form-label form-label-sm" data-i18n="secret_key">Secret Key</label>
-                <input type="text" class="form-control form-control-sm" id="secretKey" required>
+                <input type="text" class="form-control form-control-sm" id="secretKey" required autocomplete="off" spellcheck="false">
                 <div class="form-text text-xs" data-i18n="secret_key_help">32-character Base32</div>
             </div>
             <div class="d-flex gap-2">
@@ -177,8 +177,8 @@
                 </select>
             </div>
             <div class="mb-2">
-                <label for="editAccountEmail" class="form-label form-label-sm">Email</label>
-                <input type="email" class="form-control form-control-sm" id="editAccountEmail" required>
+                <label for="editAccountEmail" class="form-label form-label-sm" data-i18n="email">Email / Username</label>
+                <input type="text" class="form-control form-control-sm" id="editAccountEmail" autocomplete="off">
             </div>
             <div class="mb-3">
                 <label for="editAccountFolder" class="form-label form-label-sm">Folder</label>
@@ -226,21 +226,6 @@
                 <button type="button" class="btn btn-secondary btn-sm flex-fill" id="cancelFolderFormBtn">Cancel</button>
             </div>
         </form>
-    </div>
-
-    <!-- Account Details Modal -->
-    <div class="account-details d-none" id="accountDetails">
-        <div class="details-header bg-light p-2 border-bottom">
-            <div class="d-flex justify-content-between align-items-center">
-                <h6 class="mb-0" id="detailsTitle" data-i18n="account_details">Account Details</h6>
-                <button type="button" class="btn btn-sm" id="closeDetailsBtn">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </div>
-        </div>
-        <div class="p-3" id="detailsContent">
-            <!-- Account details will be populated here -->
-        </div>
     </div>
 
     <!-- Authentication Modal -->

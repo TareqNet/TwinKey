@@ -8,6 +8,8 @@ class StorageManager {
         this.isExtension = typeof chrome !== 'undefined' && chrome.storage;
         this.cryptoManager = null;
         this.isEncryptionEnabled = false;
+        // ciphertext → plaintext secret, only while unlocked
+        this.secretCache = new Map();
         
         // Initialize default data if not exists
         this.initializeDefaults();
@@ -199,40 +201,40 @@ class StorageManager {
      * @returns {Promise<string|null>} Decrypted secret or null
      */
     async getDecryptedSecret(accountId) {
+        return this.decryptAccountSecret(await this.getAccount(accountId));
+    }
+
+    /**
+     * Decrypt an account object's secret without re-reading storage.
+     * Cached by ciphertext for the unlocked session; cleared on lock.
+     * @param {Object|null} account
+     * @returns {Promise<string|null>} Plain secret, or null when locked/unreadable
+     */
+    async decryptAccountSecret(account) {
+        if (!account) return null;
+        // Locked: never hand ciphertext (or a cached secret) to the TOTP generator
+        if (!this.canEncrypt()) {
+            this.secretCache.clear();
+            return null;
+        }
+        // Legacy plaintext account (migrated on next unlock)
+        if (!account.encrypted) return account.secret;
+
+        if (this.secretCache.has(account.secret)) {
+            return this.secretCache.get(account.secret);
+        }
         try {
-            const account = await this.getAccount(accountId);
-            if (!account) return null;
-
-            if (account.encrypted) {
-                // Locked: never hand ciphertext to the TOTP generator
-                if (!this.canEncrypt()) return null;
-                return await this.cryptoManager.decrypt(account.secret);
-            }
-
-            // Legacy plaintext account (created before encryption existed)
-            return account.secret;
+            const secret = await this.cryptoManager.decrypt(account.secret);
+            this.secretCache.set(account.secret, secret);
+            return secret;
         } catch (error) {
-            console.error("Error getting decrypted secret:", error);
+            console.error("Error decrypting secret:", error);
             return null;
         }
     }
 
-    /**
-     * Get accounts by folder ID
-     * @param {string} folderId - Folder ID
-     * @returns {Promise<Array>} Array of accounts
-     */
-    async getAccountsByFolder(folderId) {
-        try {
-            const accounts = await this.getAccounts();
-            if (folderId === "all") {
-                return accounts;
-            }
-            return accounts.filter(acc => acc.folderId === folderId);
-        } catch (error) {
-            console.error("Error getting accounts by folder:", error);
-            return [];
-        }
+    clearSecretCache() {
+        this.secretCache.clear();
     }
 
     // ===============================
@@ -289,6 +291,7 @@ class StorageManager {
             const newFolder = {
                 id: folder.id || this.generateId(),
                 name: folder.name,
+                icon: StorageManager.FOLDER_ICONS.includes(folder.icon) ? folder.icon : "bi-folder",
                 parentId: folder.parentId || null,
                 createdAt: folder.createdAt || new Date().toISOString()
             };
@@ -360,21 +363,6 @@ class StorageManager {
         }
     }
 
-    /**
-     * Get folder by ID
-     * @param {string} folderId - Folder ID
-     * @returns {Object|null} Folder object or null
-     */
-    async getFolder(folderId) {
-        try {
-            const folders = await this.getFolders();
-            return folders.find(folder => folder.id === folderId) || null;
-        } catch (error) {
-            console.error("Error getting folder:", error);
-            return null;
-        }
-    }
-
     // ===============================
     // Settings Management
     // ===============================
@@ -419,60 +407,19 @@ class StorageManager {
     }
 
     // ===============================
-    // Search and Filter Methods
-    // ===============================
-
-    /**
-     * Search accounts by name, service, or email
-     * @param {string} query - Search query
-     * @returns {Array} Filtered accounts
-     */
-    async searchAccounts(query) {
-        try {
-            const accounts = await this.getAccounts();
-            if (!query) return accounts;
-
-            const lowercaseQuery = query.toLowerCase();
-            return accounts.filter(account => 
-                account.name.toLowerCase().includes(lowercaseQuery) ||
-                account.service.toLowerCase().includes(lowercaseQuery) ||
-                account.email.toLowerCase().includes(lowercaseQuery)
-            );
-        } catch (error) {
-            console.error("Error searching accounts:", error);
-            return [];
-        }
-    }
-
-    /**
-     * Sort accounts by specified field
-     * @param {Array} accounts - Accounts to sort
-     * @param {string} sortBy - Field to sort by (name, service, created)
-     * @returns {Array} Sorted accounts
-     */
-    sortAccounts(accounts, sortBy) {
-        try {
-            return [...accounts].sort((a, b) => {
-                switch (sortBy) {
-                    case "name":
-                        return a.name.localeCompare(b.name, "ar");
-                    case "service":
-                        return a.service.localeCompare(b.service, "ar");
-                    case "created":
-                        return new Date(b.createdAt) - new Date(a.createdAt);
-                    default:
-                        return 0;
-                }
-            });
-        } catch (error) {
-            console.error("Error sorting accounts:", error);
-            return accounts;
-        }
-    }
-
-    // ===============================
     // Utility Methods
     // ===============================
+
+    /**
+     * Bytes used by all extension storage keys.
+     * @returns {Promise<number>}
+     */
+    async getStorageBytes() {
+        if (this.isExtension) {
+            return chrome.storage.local.getBytesInUse(null);
+        }
+        return Object.keys(localStorage).reduce((total, key) => total + (localStorage.getItem(key) || "").length, 0);
+    }
 
     canEncrypt() {
         return !!(this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated());
@@ -488,71 +435,6 @@ class StorageManager {
 
     static newId() {
         return Date.now().toString(36) + Math.random().toString(36).slice(2);
-    }
-
-    /**
-     * Get storage usage statistics
-     * @returns {Object} Storage stats
-     */
-    getStorageStats() {
-        try {
-            const accounts = this.getAccounts();
-            const folders = this.getFolders();
-            
-            return {
-                accountsCount: accounts.length,
-                foldersCount: folders.length,
-                totalSize: this.getStorageSize(),
-                lastModified: this.getLastModified()
-            };
-        } catch (error) {
-            console.error("Error getting storage stats:", error);
-            return {
-                accountsCount: 0,
-                foldersCount: 0,
-                totalSize: 0,
-                lastModified: null
-            };
-        }
-    }
-
-    /**
-     * Get total storage size in bytes
-     * @returns {number} Storage size
-     */
-    getStorageSize() {
-        try {
-            let total = 0;
-            for (let key in localStorage) {
-                if (localStorage.hasOwnProperty(key) && key.startsWith("otp_")) {
-                    total += localStorage[key].length;
-                }
-            }
-            return total;
-        } catch (error) {
-            console.error("Error calculating storage size:", error);
-            return 0;
-        }
-    }
-
-    /**
-     * Get last modification date
-     * @returns {string|null} ISO date string
-     */
-    getLastModified() {
-        try {
-            const accounts = this.getAccounts();
-            if (!accounts.length) return null;
-            
-            const dates = accounts
-                .map(acc => new Date(acc.updatedAt || acc.createdAt))
-                .sort((a, b) => b - a);
-            
-            return dates[0].toISOString();
-        } catch (error) {
-            console.error("Error getting last modified:", error);
-            return null;
-        }
     }
 
     /**
@@ -917,23 +799,6 @@ class StorageManager {
             await chrome.storage.local.set(items);
         } else {
             Object.entries(items).forEach(([key, value]) => localStorage.setItem(key, JSON.stringify(value)));
-        }
-    }
-
-    /**
-     * Clear all data
-     * @returns {boolean} Success status
-     */
-    clearAllData() {
-        try {
-            localStorage.removeItem(this.accountsKey);
-            localStorage.removeItem(this.foldersKey);
-            localStorage.removeItem(this.settingsKey);
-            this.initializeDefaults();
-            return true;
-        } catch (error) {
-            console.error("Error clearing data:", error);
-            return false;
         }
     }
 }

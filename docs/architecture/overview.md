@@ -17,9 +17,7 @@ last_updated: 2026-10-20
         │                                  │
         ▼                                  ▼
 [popup.html] ◄── chrome.windows.create ── [js/background.js — service worker]
-  │  (or detached 1100×850 popup window)     ├── onInstalled: default settings/folders
-  │                                          ├── context menu + notifications
-  │                                          └── badge reset
+  │  (or detached 1100×850 popup window)     └── onInstalled: context menu, open popup on install
   ├── js/bootstrap-minimal.js  (Modal / Toast / Dropdown)
   ├── js/i18n.js               (I18nManager, locales/en.json)
   ├── js/totp.js               (TOTPGenerator, RFC 6238)
@@ -43,10 +41,10 @@ last_updated: 2026-10-20
 | `StorageManager` (`js/storage.js`) | CRUD for accounts/folders/settings, export/import, stats | `chrome.storage.local` / `localStorage` |
 | `TOTPGenerator` (`js/totp.js`) | Base32 decode, HMAC-SHA1, 6-digit / 30s codes | Web Crypto API |
 | `I18nManager` (`js/i18n.js`) | `data-i18n` attribute translation, `window.i18n.t()` | JSON locale files |
-| Service worker (`js/background.js`) | Install defaults, context menu, notifications, badge | MV3 service worker |
+| Service worker (`js/background.js`) | Context menu "Open Twin Key"; opens popup on install | MV3 service worker |
 | UI shell (`popup.html`, `css/popup.css`) | 850px popup layout, modals | Bootstrap 5.3.0 CSS + Icons from jsdelivr CDN |
 
-> ⚠️ Note: `js/app.js`, `js/ui.js`, `css/styles.css` are leftovers from the original web-app version and are not loaded by `popup.html`.
+> 💡 Tip: `window.popupManager` exposes the controller for DevTools debugging.
 
 ---
 
@@ -72,7 +70,7 @@ last_updated: 2026-10-20
 1. **Setup**: user sets PIN (≥ 6 chars, confirmed) → random 16-byte salt → PBKDF2-SHA256 (600,000 iterations) → AES-256-GCM key → random UUID encrypted → salt, encrypted token and `twinkey_kdf_iter` stored.
 2. **Login**: lockout check → PIN + stored salt + iterations → key → `twinkey_verify_token` must decrypt → key kept in memory. Then: plaintext accounts encrypted; legacy 100k vaults re-encrypted at 600k (`rekeyVault`, one storage write).
 3. **Add account**: secret encrypted with the in-memory key (random 12-byte IV prepended, base64) → saved in `otp_accounts`.
-4. **Display**: secret decrypted → `TOTPGenerator` → code + countdown refreshed every second.
+4. **Display**: `decryptAccountSecret()` (cached by ciphertext while unlocked) → `TOTPGenerator` (null on bad secret) → codes regenerated when `floor(now / 30s)` changes; countdown every second.
 5. **Lock (60 s idle) / close**: key discarded, code updater stopped, rendered accounts/folders and open forms wiped.
 6. **New window**: from the login screen only — `twinkey_handoff` written with a 10 s expiry; the new window deletes it before use. From the header, the new window asks for the PIN.
 7. **Change PIN**: verify current PIN → `rekeyVault(newPin)` decrypts all, re-encrypts under a new salt, archives the old salt, writes accounts + verifier in one call.

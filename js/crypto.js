@@ -1,37 +1,10 @@
-// Crypto Manager for secure storage and biometric authentication
+// Crypto Manager: PIN-derived AES-256-GCM key, verifier and lockout
 
 class CryptoManager {
     constructor() {
-        this.isWebAuthnSupported = this.checkWebAuthnSupport();
-        this.credentialId = null;
         this.encryptionKey = null;
         this.verifyTokenValue = null;
         this.kdfIterations = null;
-    }
-
-    /**
-     * Check if Web Authentication API is supported
-     */
-    checkWebAuthnSupport() {
-        // For Chrome extensions, we'll use system authentication
-        return true; // Always return true, we'll handle the authentication differently
-    }
-
-    /**
-     * Generate encryption key from user authentication
-     */
-    async generateEncryptionKey(password = null) {
-        try {
-            if (password) {
-                return await this.setupPasswordAuth(password);
-            }
-            
-            // Try authenticating with existing password
-            return await this.authenticateWithPassword();
-        } catch (error) {
-            console.error("Error generating encryption key:", error);
-            return false;
-        }
     }
 
     /**
@@ -68,11 +41,8 @@ class CryptoManager {
      * @returns {Promise<Uint8Array|null>}
      */
     async getStoredSalt() {
-        const isExtension = typeof chrome !== "undefined" && chrome.storage;
-        const saltStr = isExtension
-            ? (await chrome.storage.local.get("twinkey_salt")).twinkey_salt
-            : localStorage.getItem("twinkey_salt");
-        return saltStr ? CryptoManager.saltFromString(saltStr) : null;
+        const { twinkey_salt: saltStr } = await this.storageGet(["twinkey_salt"]);
+        return saltStr ? CryptoManager.saltFromString(String(saltStr)) : null;
     }
 
     static saltFromString(saltStr) {
@@ -256,224 +226,6 @@ class CryptoManager {
     }
 
     /**
-     * Authenticate user with biometrics (WebAuthn)
-     */
-    async authenticateWithBiometrics() {
-        try {
-            // Check if we have existing credentials
-            const storedCredId = localStorage.getItem('twinkey_cred_id');
-            
-            if (!storedCredId) {
-                // First time setup - create new credential
-                return await this.setupBiometricAuth();
-            } else {
-                // Authenticate with existing credential
-                return await this.verifyBiometricAuth(storedCredId);
-            }
-        } catch (error) {
-            console.error("Biometric authentication error:", error);
-            throw new Error("Biometric authentication failed");
-        }
-    }
-
-    /**
-     * Setup system authentication (simplified for Chrome extensions)
-     */
-    async setupSystemAuth() {
-        try {
-            console.log("Setting up system authentication...");
-            
-            // Generate a consistent key based on browser/system info
-            const keyData = await this.generateSystemKey();
-            
-            // Derive encryption key
-            const encoder = new TextEncoder();
-            const keyMaterial = await window.crypto.subtle.importKey(
-                'raw',
-                encoder.encode(keyData),
-                'PBKDF2',
-                false,
-                ['deriveKey']
-            );
-            
-            const salt = new Uint8Array(16);
-            // Use consistent salt based on system info
-            const systemInfo = navigator.userAgent + navigator.platform + (navigator.hardwareConcurrency || 4);
-            const saltData = await window.crypto.subtle.digest('SHA-256', encoder.encode(systemInfo));
-            salt.set(new Uint8Array(saltData.slice(0, 16)));
-            
-            this.encryptionKey = await window.crypto.subtle.deriveKey(
-                {
-                    name: 'PBKDF2',
-                    salt: salt,
-                    iterations: 100000,
-                    hash: 'SHA-256'
-                },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-            
-            // Store that system auth is set up
-            localStorage.setItem('twinkey_system_auth', 'true');
-            return true;
-            
-        } catch (error) {
-            console.error("System auth setup error:", error);
-            throw error;
-        }
-    }
-
-    /**
-     * Generate system-specific key data with user verification
-     */
-    async generateSystemKey() {
-        // Request user's system password
-        const password = prompt("Enter your system/computer password for secure authentication:");
-        if (!password) {
-            throw new Error("Password required for authentication");
-        }
-        
-        // Use browser fingerprint + user password
-        const fingerprint = [
-            navigator.userAgent,
-            navigator.platform,
-            navigator.language,
-            screen.width + 'x' + screen.height,
-            new Date().getTimezoneOffset(),
-            navigator.hardwareConcurrency || 4
-        ].join('|');
-        
-        // Combine fingerprint with user password for stronger security
-        return fingerprint + '|' + password;
-    }
-
-    /**
-     * Authenticate using system method
-     */
-    async authenticateWithSystem() {
-        try {
-            console.log("Authenticating with system...");
-            
-            // Check if system auth is set up
-            if (!this.isSystemAuthSetup()) {
-                throw new Error("System authentication not set up");
-            }
-            
-            // Request the same password used during setup
-            const keyData = await this.generateSystemKey();
-            
-            const encoder = new TextEncoder();
-            const keyMaterial = await window.crypto.subtle.importKey(
-                'raw',
-                encoder.encode(keyData),
-                'PBKDF2',
-                false,
-                ['deriveKey']
-            );
-            
-            const salt = new Uint8Array(16);
-            // Use same salt as setup
-            const systemInfo = navigator.userAgent + navigator.platform + (navigator.hardwareConcurrency || 4);
-            const saltData = await window.crypto.subtle.digest('SHA-256', encoder.encode(systemInfo));
-            salt.set(new Uint8Array(saltData.slice(0, 16)));
-            
-            this.encryptionKey = await window.crypto.subtle.deriveKey(
-                {
-                    name: 'PBKDF2',
-                    salt: salt,
-                    iterations: 100000,
-                    hash: 'SHA-256'
-                },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-            
-            return true;
-            
-        } catch (error) {
-            console.error("System authentication error:", error);
-            throw error;
-        }
-    }
-
-    /**
-     * Verify biometric authentication with existing credential
-     */
-    async verifyBiometricAuth(storedCredId) {
-        try {
-            const credId = new Uint8Array(storedCredId.split(',').map(x => parseInt(x)));
-            const challenge = new Uint8Array(32);
-            window.crypto.getRandomValues(challenge);
-
-            const assertion = await navigator.credentials.get({
-                publicKey: {
-                    challenge: challenge,
-                    allowCredentials: [{
-                        id: credId,
-                        type: "public-key"
-                    }],
-                    userVerification: "required",
-                    timeout: 60000
-                }
-            });
-
-            if (assertion) {
-                this.credentialId = assertion.rawId;
-                await this.deriveKeyFromCredential(assertion);
-                return true;
-            }
-            
-            return false;
-        } catch (error) {
-            console.error("Verify biometric auth error:", error);
-            throw error;
-        }
-    }
-
-    /**
-     * Derive encryption key from WebAuthn credential
-     */
-    async deriveKeyFromCredential(credential) {
-        try {
-            // Use credential response to derive a consistent key
-            const keyMaterial = await window.crypto.subtle.importKey(
-                'raw',
-                credential.response.clientDataJSON,
-                'PBKDF2',
-                false,
-                ['deriveKey']
-            );
-
-            const salt = new Uint8Array(16);
-            // Use consistent salt based on credential ID
-            const credIdArray = new Uint8Array(credential.rawId);
-            for (let i = 0; i < 16; i++) {
-                salt[i] = credIdArray[i % credIdArray.length];
-            }
-
-            this.encryptionKey = await window.crypto.subtle.deriveKey(
-                {
-                    name: 'PBKDF2',
-                    salt: salt,
-                    iterations: 100000,
-                    hash: 'SHA-256'
-                },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-        } catch (error) {
-            console.error("Error deriving key from credential:", error);
-            throw error;
-        }
-    }
-
-    /**
      * Encrypt secret data
      */
     async encrypt(data) {
@@ -535,65 +287,16 @@ class CryptoManager {
      */
     logout() {
         this.encryptionKey = null;
-        this.credentialId = null;
         this.verifyTokenValue = null;
         this.kdfIterations = null;
-    }
-
-    /**
-     * Get supported authentication methods
-     */
-    getSupportedAuthMethods() {
-        const methods = [];
-        
-        if (this.isWebAuthnSupported) {
-            methods.push('biometric');
-        }
-        
-        methods.push('password');
-        
-        return methods;
-    }
-
-    /**
-     * Check if biometric auth is set up
-     */
-    isBiometricSetup() {
-        return !!localStorage.getItem('twinkey_cred_id');
-    }
-
-    /**
-     * Check if system auth is set up
-     */
-    async isSystemAuthSetup() {
-        const isExtension = typeof chrome !== 'undefined' && chrome.storage;
-        if (isExtension) {
-            const result = await chrome.storage.local.get('twinkey_system_auth');
-            return !!result.twinkey_system_auth;
-        } else {
-            return !!localStorage.getItem('twinkey_system_auth');
-        }
     }
 
     /**
      * Check if password auth is set up
      */
     async isPasswordAuthSetup() {
-        const isExtension = typeof chrome !== 'undefined' && chrome.storage;
-        if (isExtension) {
-            const result = await chrome.storage.local.get('twinkey_verify_token');
-            return !!result.twinkey_verify_token;
-        } else {
-            return !!localStorage.getItem('twinkey_verify_token');
-        }
-    }
-
-    /**
-     * Remove biometric credentials
-     */
-    removeBiometricAuth() {
-        localStorage.removeItem('twinkey_cred_id');
-        this.credentialId = null;
+        const result = await this.storageGet(["twinkey_verify_token"]);
+        return !!result.twinkey_verify_token;
     }
 }
 
