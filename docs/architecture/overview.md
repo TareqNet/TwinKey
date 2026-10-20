@@ -27,7 +27,7 @@ last_updated: 2026-10-20
         │
         ▼
 [chrome.storage.local]   fallback → [localStorage] (non-extension dev)
-[chrome.storage.session] twinkey_handoff (one-shot, 10 s, "Unlock in a new window")
+[chrome.storage.session] twinkey_handoff (one-shot, 10 s, lock-screen "Open in new window")
 ```
 
 ---
@@ -61,7 +61,7 @@ last_updated: 2026-10-20
 | `twinkey_verify_plain` | Legacy only: plaintext copy of the UUID; removed on first unlock after 2026-10-20 | No |
 | `twinkey_salt_archive` | Previous vault salts; lets v1.1 encrypted backups still be imported | No |
 | `twinkey_auth_failures` | `{count, lockedUntil}` — 30 s lockout after 5 failures, doubling, max 15 min | No |
-| `chrome.storage.session.twinkey_handoff` | `{password, expiresAt}` for "Open in New Window" from the login screen; deleted on read, 10 s TTL | No (memory-only area) |
+| `chrome.storage.session.twinkey_handoff` | `{password, expiresAt}` for the lock-screen "Open in new window" button (top-right) when a PIN was typed; deleted on read, 10 s TTL | No (memory-only area) |
 
 ---
 
@@ -72,7 +72,7 @@ last_updated: 2026-10-20
 3. **Add account**: secret encrypted with the in-memory key (random 12-byte IV prepended, base64) → saved in `otp_accounts`.
 4. **Display**: `decryptAccountSecret()` (cached by ciphertext while unlocked) → `TOTPGenerator` (null on bad secret) → codes regenerated when `floor(now / 30s)` changes; countdown every second.
 5. **Lock (60 s idle) / close**: key discarded, code updater stopped, rendered accounts/folders and open forms wiped.
-6. **New window**: from the login screen only — `twinkey_handoff` written with a 10 s expiry; the new window deletes it before use. From the header, the new window asks for the PIN.
+6. **New window**: lock-screen button (top-right, popup only) — if a PIN was typed, `twinkey_handoff` is written with a 10 s expiry; the new window deletes it before use. From the header, the new window asks for the PIN.
 7. **Change PIN**: verify current PIN → `rekeyVault(newPin)` decrypts all, re-encrypts under a new salt, archives the old salt, writes accounts + verifier in one call.
 
 ---

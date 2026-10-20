@@ -80,7 +80,7 @@ No API, no backend. UI is the extension popup (`popup.html`, 780×560) or a deta
 - **Organization**: folders sidebar with icons (folder select under 600 px), search, sort (custom, name, service, date, last used), drag-and-drop reorder and move-to-folder.
 - **Appearance**: Refined Minimal design, System / Light / Dark theme (`otp_settings.appearance`; legacy `theme` ignored), WCAG AA contrast, keyboard-accessible dialogs and menus.
 - **Data**: settings modal, storage stats, JSON export/import v1.2 (plain or password-encrypted with KDF params in file; replace or merge; legacy v1.1 recovery).
-- **Window**: "Open in New Window" (header + login screen); login-screen button hands off auth once (`twinkey_handoff`, 10 s TTL).
+- **Window**: "Open in new window" in the header and at the top-right of the lock screen (popup only); from the lock screen a typed PIN is handed off once (`twinkey_handoff`, 10 s TTL).
 - **i18n**: English only (`locales/en.json`); `data-i18n` attributes + `window.i18n.t()`. Arabic removed 2025-08-29.
 - **Removed**: QR code scanning (content script + context menu) removed 2025-12-15.
 

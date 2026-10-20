@@ -42,6 +42,10 @@
 
     <!-- Lock / first-run screen -->
     <section class="lock-screen" id="lockScreen" hidden>
+        <button type="button" class="btn btn-secondary btn-sm lock-corner popup-only" id="openWindowFromLockBtn" title="Open Twin Key in its own window. A PIN typed here unlocks it there.">
+            <svg class="icon"><use href="#i-external"/></svg>
+            Open in new window
+        </button>
         <div class="lock-card">
             <div class="lock-logo"><svg class="icon"><use href="#i-logo"/></svg></div>
             <h1 class="lock-title" data-i18n="app_title">Twin Key</h1>
@@ -51,10 +55,6 @@
                 <label class="sr-only" for="masterPassword">PIN or password</label>
                 <input type="password" class="input input-lg" id="masterPassword" placeholder="PIN or password" maxlength="64" autocomplete="current-password">
                 <button type="submit" class="btn btn-primary btn-block">Unlock</button>
-                <button type="button" class="btn btn-ghost btn-block popup-only" id="openWindowFromLockBtn">
-                    <svg class="icon"><use href="#i-external"/></svg>
-                    Unlock in a new window
-                </button>
             </form>
 
             <form id="setupForm" class="stack" hidden novalidate>
@@ -240,15 +240,6 @@
             </header>
 
             <section class="settings-section">
-                <h4>Appearance</h4>
-                <div class="segmented" role="radiogroup" aria-label="Theme">
-                    <input type="radio" name="theme" id="themeAuto" value="auto"><label for="themeAuto">System</label>
-                    <input type="radio" name="theme" id="themeLight" value="light"><label for="themeLight">Light</label>
-                    <input type="radio" name="theme" id="themeDark" value="dark"><label for="themeDark">Dark</label>
-                </div>
-            </section>
-
-            <section class="settings-section">
                 <h4>Change PIN</h4>
                 <form class="stack-sm" id="changePinForm" novalidate>
                     <input type="password" class="input" id="currentPin" placeholder="Current PIN" autocomplete="current-password" aria-label="Current PIN">
@@ -281,6 +272,15 @@
                     </div>
                     <div><button type="submit" class="btn btn-secondary btn-sm" id="importBtn" disabled><svg class="icon"><use href="#i-upload"/></svg>Import</button></div>
                 </form>
+            </section>
+
+            <section class="settings-section">
+                <h4>Appearance</h4>
+                <div class="segmented" role="radiogroup" aria-label="Theme">
+                    <input type="radio" name="theme" id="themeAuto" value="auto"><label for="themeAuto">System</label>
+                    <input type="radio" name="theme" id="themeLight" value="light"><label for="themeLight">Light</label>
+                    <input type="radio" name="theme" id="themeDark" value="dark"><label for="themeDark">Dark</label>
+                </div>
             </section>
 
             <section class="settings-section">
