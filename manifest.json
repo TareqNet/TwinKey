@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Twin Key",
   "description": "Secure, offline TOTP authenticator: AES-256 encrypted secrets, folders, drag-and-drop, light and dark themes",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "author": "Tareq Nassry <tareq@tareq.website>",
   "permissions": [
     "storage",
