@@ -33,39 +33,83 @@ class CryptoManager {
     }
 
     /**
+     * Derive an AES-256-GCM key from a password. Pure: never touches storage.
+     * @param {string} password
+     * @param {Uint8Array} salt
+     * @param {number} iterations
+     * @returns {Promise<CryptoKey>}
+     */
+    async deriveKey(password, salt, iterations = CryptoManager.LEGACY_ITERATIONS) {
+        const keyMaterial = await window.crypto.subtle.importKey(
+            "raw",
+            new TextEncoder().encode(password),
+            "PBKDF2",
+            false,
+            ["deriveKey"]
+        );
+
+        return window.crypto.subtle.deriveKey(
+            { name: "PBKDF2", salt: salt, iterations: iterations, hash: "SHA-256" },
+            keyMaterial,
+            { name: "AES-GCM", length: 256 },
+            false,
+            ["encrypt", "decrypt"]
+        );
+    }
+
+    generateSalt() {
+        return window.crypto.getRandomValues(new Uint8Array(16));
+    }
+
+    /**
+     * Salt currently stored for the master PIN, or null.
+     * @returns {Promise<Uint8Array|null>}
+     */
+    async getStoredSalt() {
+        const isExtension = typeof chrome !== "undefined" && chrome.storage;
+        const saltStr = isExtension
+            ? (await chrome.storage.local.get("twinkey_salt")).twinkey_salt
+            : localStorage.getItem("twinkey_salt");
+        return saltStr ? CryptoManager.saltFromString(saltStr) : null;
+    }
+
+    static saltFromString(saltStr) {
+        return new Uint8Array(saltStr.split(",").map(x => parseInt(x, 10)));
+    }
+
+    static saltToString(salt) {
+        return Array.from(salt).join(",");
+    }
+
+    static bytesToBase64(bytes) {
+        // Chunked to avoid "Maximum call stack size exceeded" on large payloads
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        return btoa(binary);
+    }
+
+    static base64ToBytes(base64) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        return bytes;
+    }
+
+    /**
      * Setup password authentication with verification token
      */
     async setupPasswordAuth(password) {
         try {
             // Generate random verification token
             const verificationToken = crypto.randomUUID();
-            
-            // Create encryption key from password
-            const encoder = new TextEncoder();
-            const keyMaterial = await window.crypto.subtle.importKey(
-                'raw',
-                encoder.encode(password),
-                'PBKDF2',
-                false,
-                ['deriveBits', 'deriveKey']
-            );
-            
-            const salt = new Uint8Array(16);
-            window.crypto.getRandomValues(salt);
-            
-            this.encryptionKey = await window.crypto.subtle.deriveKey(
-                {
-                    name: 'PBKDF2',
-                    salt: salt,
-                    iterations: 100000,
-                    hash: 'SHA-256'
-                },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-            
+
+            const salt = this.generateSalt();
+            this.encryptionKey = await this.deriveKey(password, salt);
+
             // Encrypt the verification token with the password
             const encryptedToken = await this.encrypt(verificationToken);
             
@@ -119,29 +163,8 @@ class CryptoManager {
             }
             
             // Recreate encryption key from password
-            const salt = new Uint8Array(saltStr.split(',').map(x => parseInt(x)));
-            const encoder = new TextEncoder();
-            const keyMaterial = await window.crypto.subtle.importKey(
-                'raw',
-                encoder.encode(password),
-                'PBKDF2',
-                false,
-                ['deriveBits', 'deriveKey']
-            );
-            
-            this.encryptionKey = await window.crypto.subtle.deriveKey(
-                {
-                    name: 'PBKDF2',
-                    salt: salt,
-                    iterations: 100000,
-                    hash: 'SHA-256'
-                },
-                keyMaterial,
-                { name: 'AES-GCM', length: 256 },
-                false,
-                ['encrypt', 'decrypt']
-            );
-            
+            this.encryptionKey = await this.deriveKey(password, CryptoManager.saltFromString(saltStr));
+
             // Try to decrypt the verification token
             try {
                 const decryptedToken = await this.decrypt(encryptedToken);
@@ -387,72 +410,50 @@ class CryptoManager {
      * Encrypt secret data
      */
     async encrypt(data) {
-        try {
-            if (!this.encryptionKey) {
-                throw new Error("No encryption key available");
-            }
-
-            const encoder = new TextEncoder();
-            const dataBuffer = encoder.encode(data);
-            
-            const iv = new Uint8Array(12);
-            window.crypto.getRandomValues(iv);
-
-            const encrypted = await window.crypto.subtle.encrypt(
-                {
-                    name: 'AES-GCM',
-                    iv: iv
-                },
-                this.encryptionKey,
-                dataBuffer
-            );
-
-            // Combine IV and encrypted data
-            const combined = new Uint8Array(iv.length + encrypted.byteLength);
-            combined.set(iv);
-            combined.set(new Uint8Array(encrypted), iv.length);
-
-            // Convert to base64 for storage
-            return btoa(String.fromCharCode.apply(null, combined));
-        } catch (error) {
-            console.error("Encryption error:", error);
-            throw error;
+        if (!this.encryptionKey) {
+            throw new Error("No encryption key available");
         }
+        return this.encryptWithKey(this.encryptionKey, data);
     }
 
     /**
      * Decrypt secret data
      */
     async decrypt(encryptedData) {
-        try {
-            if (!this.encryptionKey) {
-                throw new Error("No encryption key available");
-            }
-
-            // Convert from base64
-            const combined = new Uint8Array(
-                atob(encryptedData).split('').map(char => char.charCodeAt(0))
-            );
-
-            // Extract IV and encrypted data
-            const iv = combined.slice(0, 12);
-            const encrypted = combined.slice(12);
-
-            const decrypted = await window.crypto.subtle.decrypt(
-                {
-                    name: 'AES-GCM',
-                    iv: iv
-                },
-                this.encryptionKey,
-                encrypted
-            );
-
-            const decoder = new TextDecoder();
-            return decoder.decode(decrypted);
-        } catch (error) {
-            console.error("Decryption error:", error);
-            throw error;
+        if (!this.encryptionKey) {
+            throw new Error("No encryption key available");
         }
+        return this.decryptWithKey(this.encryptionKey, encryptedData);
+    }
+
+    /**
+     * AES-GCM encrypt with an explicit key. Output: base64(IV[12] + ciphertext).
+     */
+    async encryptWithKey(key, data) {
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const encrypted = await window.crypto.subtle.encrypt(
+            { name: "AES-GCM", iv: iv },
+            key,
+            new TextEncoder().encode(data)
+        );
+
+        const combined = new Uint8Array(iv.length + encrypted.byteLength);
+        combined.set(iv);
+        combined.set(new Uint8Array(encrypted), iv.length);
+        return CryptoManager.bytesToBase64(combined);
+    }
+
+    /**
+     * AES-GCM decrypt with an explicit key. Throws on wrong key or tampered data.
+     */
+    async decryptWithKey(key, encryptedData) {
+        const combined = CryptoManager.base64ToBytes(encryptedData);
+        const decrypted = await window.crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: combined.slice(0, 12) },
+            key,
+            combined.slice(12)
+        );
+        return new TextDecoder().decode(decrypted);
     }
 
     /**
@@ -526,3 +527,8 @@ class CryptoManager {
         this.credentialId = null;
     }
 }
+
+// PBKDF2 iterations used by the vault before versioned KDF params existed
+CryptoManager.LEGACY_ITERATIONS = 100000;
+// Export files are portable and exposed to offline brute force: use OWASP 2023 value
+CryptoManager.EXPORT_ITERATIONS = 600000;

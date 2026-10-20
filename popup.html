@@ -334,8 +334,15 @@
                                 Import
                             </button>
                         </div>
-                        <div class="form-text">
-                            <strong>Warning:</strong> This will replace all existing data!
+                        <div class="d-flex gap-3 mt-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="importMode" id="importModeReplace" value="replace" checked>
+                                <label class="form-check-label small" for="importModeReplace">Replace all data</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="importMode" id="importModeMerge" value="merge">
+                                <label class="form-check-label small" for="importModeMerge">Merge with existing</label>
+                            </div>
                         </div>
                         
                         <!-- Import Password Section (hidden by default) -->
@@ -447,7 +454,8 @@
                     <!-- Export Password Section -->
                     <div class="mb-3" id="exportPasswordSection">
                         <label for="exportPassword" class="form-label">Export Password</label>
-                        <input type="password" class="form-control" id="exportPassword" placeholder="Enter a password to encrypt the export file">
+                        <input type="password" class="form-control mb-2" id="exportPassword" placeholder="At least 8 characters" autocomplete="new-password">
+                        <input type="password" class="form-control" id="exportPasswordConfirm" placeholder="Confirm password" autocomplete="new-password">
                         <div class="form-text">Choose a strong password. You'll need this password to import the file later.</div>
                     </div>
                 </div>

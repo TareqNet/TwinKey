@@ -1,3 +1,13 @@
+// Escape text for safe interpolation into innerHTML templates
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
 class PopupManager {
     constructor() {
         this.storageManager = new StorageManager();
@@ -39,17 +49,18 @@ class PopupManager {
         // Initialize crypto manager
         await this.storageManager.initializeCrypto(this.cryptoManager);
 
-        // Check for cached auth from "Open in New Window" action
+        // One-shot auth hand-off from "Open in New Window" on the login screen
         try {
-            const session = await chrome.storage.session.get('temp_auth_password');
-            if (session.temp_auth_password) {
-                const success = await this.cryptoManager.authenticateWithPassword(session.temp_auth_password);
+            const session = await chrome.storage.session.get(["twinkey_handoff", "temp_auth_password"]);
+            // Always clear first, including the legacy key, so a stale value can never log anyone in
+            await chrome.storage.session.remove(["twinkey_handoff", "temp_auth_password"]);
+            const handoff = session.twinkey_handoff;
+            if (handoff && typeof handoff.password === "string" && Date.now() < handoff.expiresAt) {
+                const success = await this.cryptoManager.authenticateWithPassword(handoff.password);
                 if (success) {
                     this.isAuthenticated = true;
                     this.startActivityTracking(); // Start tracking immediately
                 }
-                // Clear the temp password immediately
-                await chrome.storage.session.remove('temp_auth_password');
             }
         } catch (e) {
             console.error("Error checking session storage:", e);
@@ -141,6 +152,10 @@ class PopupManager {
     }
 
     setupEventListeners() {
+        // Static elements: bind once, even across lock/unlock cycles
+        if (this.listenersBound) return;
+        this.listenersBound = true;
+
         // Add account button
         document.getElementById("addAccountBtn").addEventListener("click", () => {
             this.showAddForm();
@@ -215,13 +230,8 @@ class PopupManager {
             this.hideAccountDetails();
         });
 
-        // Open in tab button
-        document.getElementById("openInTabBtn").addEventListener("click", async () => {
-            // If we have a current password (from login), save it to session storage
-            // so the new window can auto-login
-            if (this.currentPassword && typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
-                await chrome.storage.session.set({ 'temp_auth_password': this.currentPassword });
-            }
+        // Open in new window: the PIN is not kept in memory, so the new window asks for it
+        document.getElementById("openInTabBtn").addEventListener("click", () => {
             this.openInNewTab();
         });
 
@@ -335,7 +345,8 @@ class PopupManager {
             const success = await this.storageManager.addAccount(account);
 
             if (success) {
-                this.accounts.push(account);
+                // Reload from storage so the plaintext secret is not kept in memory
+                this.accounts = await this.storageManager.getAccounts();
                 this.filterAndSortAccounts();
                 await this.renderFolders();
                 await this.renderAccounts();
@@ -463,7 +474,7 @@ class PopupManager {
                 });
 
                 this.filteredAccounts.forEach(account => {
-                    const card = document.querySelector(`[data-account-id="${account.id}"]`);
+                    const card = document.querySelector(`[data-account-id="${CSS.escape(account.id)}"]`);
                     if (card) {
                         const copyBtn = card.querySelector(".copy-btn");
                         if (copyBtn) {
@@ -506,14 +517,14 @@ class PopupManager {
         const folderName = folder ? folder.name : 'Uncategorized';
 
         return `
-            <div class="account-card fade-in" data-account-id="${account.id}">
+            <div class="account-card fade-in" data-account-id="${escapeHtml(account.id)}">
                 <div class="account-header">
                     <div class="d-flex align-items-center gap-2">
                         <div class="drag-handle" draggable="true" title="Drag to reorder">
                             <i class="bi bi-grip-vertical"></i>
                         </div>
-                        <div class="account-service">${account.service}</div>
-                        <div class="account-folder-badge">${folderName}</div>
+                        <div class="account-service">${escapeHtml(account.service)}</div>
+                        <div class="account-folder-badge">${escapeHtml(folderName)}</div>
                     </div>
                     <div class="account-buttons">
                         <div class="dropdown">
@@ -528,11 +539,11 @@ class PopupManager {
                         </div>
                     </div>
                 </div>
-                <div class="account-name">${account.name}</div>
-                <div class="account-email">${account.email}</div>
+                <div class="account-name">${escapeHtml(account.name)}</div>
+                <div class="account-email">${escapeHtml(account.email)}</div>
                 <div class="otp-section">
                     <div class="otp-left-section">
-                        <div class="otp-code" data-otp="${otp}">${this.formatOTP(otp)}</div>
+                        <div class="otp-code">${escapeHtml(this.formatOTP(otp))}</div>
                         <button class="copy-btn" title="Copy code">
                             <i class="bi bi-copy"></i>
                         </button>
@@ -993,7 +1004,6 @@ class PopupManager {
                 if (account) {
                     const newOTP = await this.generateOTP(account.id);
                     element.textContent = this.formatOTP(newOTP);
-                    element.setAttribute("data-otp", newOTP);
                 }
             });
 
@@ -1014,7 +1024,7 @@ class PopupManager {
             await this.storageManager.updateAccount(account.id, { lastUsed: account.lastUsed });
 
             // Visual feedback
-            const button = document.querySelector(`[data-account-id="${account.id}"] .copy-btn`);
+            const button = document.querySelector(`[data-account-id="${CSS.escape(account.id)}"] .copy-btn`);
             if (button) {
                 button.classList.add("copy-success");
                 setTimeout(() => button.classList.remove("copy-success"), 300);
@@ -1227,11 +1237,13 @@ class PopupManager {
         // Add custom folders
         this.folders.forEach(folder => {
             const count = folderCounts[folder.id] || 0;
+            const icon = StorageManager.FOLDER_ICONS.includes(folder.icon) ? folder.icon : "bi-folder";
+            const folderId = escapeHtml(folder.id);
             html += `
-                <div class="folder-item ${this.currentFolderId === folder.id ? 'active' : ''}" data-folder-id="${folder.id}">
+                <div class="folder-item ${this.currentFolderId === folder.id ? 'active' : ''}" data-folder-id="${folderId}">
                     <div class="folder-info">
-                        <i class="bi ${folder.icon || 'bi-folder'}"></i>
-                        <span>${folder.name}</span>
+                        <i class="bi ${icon}"></i>
+                        <span>${escapeHtml(folder.name)}</span>
                     </div>
                     <div class="d-flex align-items-center gap-1">
                         <span class="folder-count">${count}</span>
@@ -1240,11 +1252,11 @@ class PopupManager {
                                 <i class="bi bi-three-dots-vertical"></i>
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
-                                <li><a class="dropdown-item edit-folder-btn" href="#" data-folder-id="${folder.id}">
+                                <li><a class="dropdown-item edit-folder-btn" href="#" data-folder-id="${folderId}">
                                     <i class="bi bi-pencil me-2"></i>Edit
                                 </a></li>
                                 <li><hr class="dropdown-divider"></li>
-                                <li><a class="dropdown-item delete-folder-btn text-danger" href="#" data-folder-id="${folder.id}">
+                                <li><a class="dropdown-item delete-folder-btn text-danger" href="#" data-folder-id="${folderId}">
                                     <i class="bi bi-trash me-2"></i>Delete
                                 </a></li>
                             </ul>
@@ -1321,7 +1333,7 @@ class PopupManager {
 
         let options = '<option value="uncategorized">Uncategorized</option>';
         this.folders.forEach(folder => {
-            options += `<option value="${folder.id}">${folder.name}</option>`;
+            options += `<option value="${escapeHtml(folder.id)}">${escapeHtml(folder.name)}</option>`;
         });
 
         addFolderSelect.innerHTML = options;
@@ -1543,9 +1555,11 @@ class PopupManager {
                     try {
                         const success = await this.cryptoManager.authenticateWithPassword(password);
                         if (success) {
-                            // Save to session storage for the new window
+                            // One-shot hand-off, read and deleted by the new window within seconds
                             if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.session) {
-                                await chrome.storage.session.set({ 'temp_auth_password': password });
+                                await chrome.storage.session.set({
+                                    twinkey_handoff: { password: password, expiresAt: Date.now() + 10000 }
+                                });
                             }
                             this.openInNewTab();
                             window.close(); // Close this popup
@@ -1601,7 +1615,6 @@ class PopupManager {
             const success = await this.cryptoManager.authenticateWithPassword(password);
             if (success) {
                 this.isAuthenticated = true;
-                this.currentPassword = password; // Store password for session transfer
                 this.hideAuthenticationModal();
                 await this.completeInitialization();
                 passwordInput.value = '';
@@ -1719,7 +1732,6 @@ class PopupManager {
 
         // Clear auth state
         this.isAuthenticated = false;
-        this.currentPassword = null;
         this.cryptoManager.logout();
 
         // Clear sensitive data from UI (optional, but good for security)
@@ -1856,25 +1868,30 @@ class PopupManager {
 
     async handleExport() {
         try {
-            const exportType = document.querySelector('input[name="exportType"]:checked').value;
+            const exportType = document.getElementById("exportEncrypted").checked ? "encrypted" : "unencrypted";
             const exportPassword = document.getElementById("exportPassword").value;
 
-            // Validate password for encrypted export
+            // Validate password for encrypted export: the file is portable, so it must resist offline guessing
             if (exportType === 'encrypted') {
-                if (!exportPassword || exportPassword.length < 4) {
-                    this.showToast("Please enter a password (at least 4 characters)", "error");
+                if (exportPassword.length < 8) {
+                    this.showToast("Please enter a password (at least 8 characters)", "error");
+                    return;
+                }
+                if (exportPassword !== document.getElementById("exportPasswordConfirm").value) {
+                    this.showToast("Passwords do not match", "error");
                     return;
                 }
             }
 
             // Export data with or without password
             const password = exportType === 'encrypted' ? exportPassword : null;
-            const data = await this.storageManager.exportData(password);
+            const result = await this.storageManager.exportData(password);
 
-            if (!data) {
+            if (!result) {
                 this.showToast("Error exporting data", "error");
                 return;
             }
+            const data = result.file;
 
             // Create filename with current date and encryption indicator
             const now = new Date();
@@ -1900,10 +1917,16 @@ class PopupManager {
 
             // Hide modal and show success message
             this.hideExportOptionsModal();
-            const message = exportType === 'encrypted'
-                ? "Data exported successfully with password protection"
-                : "Data exported successfully without encryption";
-            this.showToast(message, "success");
+            document.getElementById("exportPassword").value = "";
+            document.getElementById("exportPasswordConfirm").value = "";
+            if (result.skipped > 0) {
+                this.showToast(`Exported, but ${result.skipped} unreadable account(s) were left out`, "error");
+            } else {
+                const message = exportType === 'encrypted'
+                    ? "Data exported successfully with password protection"
+                    : "Data exported successfully without encryption";
+                this.showToast(message, "success");
+            }
 
         } catch (error) {
             console.error("Error exporting data:", error);
@@ -1952,38 +1975,31 @@ class PopupManager {
             }
 
             // Read file
-            const text = await file.text();
-            const data = JSON.parse(text);
-
-            // Check if file is encrypted and password is required
-            if (data.encrypted && data.encryptedData) {
-                const importPassword = importPasswordInput.value;
-                if (!importPassword) {
-                    this.showToast("Please enter the import password", "error");
-                    return;
-                }
-            }
-
-            // Validate data structure for unencrypted files
-            if (!data.encrypted && !data.accounts && !data.folders && !data.settings && !data.encryptedData) {
+            let data;
+            try {
+                data = JSON.parse(await file.text());
+            } catch (error) {
                 this.showToast("Invalid backup file format", "error");
                 return;
             }
 
-            // Confirm replacement
-            const confirmed = confirm("This will replace all existing data. Are you sure?");
-            if (!confirmed) {
+            // Check if file is encrypted and password is required
+            const importPassword = data && data.encrypted ? importPasswordInput.value : null;
+            if (data && data.encrypted && !importPassword) {
+                this.showToast("Please enter the import password", "error");
                 return;
             }
 
-            // Import data with password if needed
-            const importPassword = data.encrypted ? importPasswordInput.value : null;
-            const success = await this.storageManager.importData(data, importPassword);
-
-            if (!success) {
-                this.showToast("Error importing data. Please check password or file format.", "error");
+            const mode = document.getElementById("importModeMerge").checked ? "merge" : "replace";
+            const question = mode === "merge"
+                ? "Accounts and folders from the file will be added. Existing items with the same ID will be overwritten. Continue?"
+                : "This will replace all existing accounts and folders. Are you sure?";
+            if (!confirm(question)) {
                 return;
             }
+
+            // Throws with a user-facing message on wrong password or bad file
+            const summary = await this.storageManager.importData(data, importPassword, mode);
 
             // Reload data and refresh UI
             await this.loadData();
@@ -1997,14 +2013,11 @@ class PopupManager {
             document.getElementById("importBtn").disabled = true;
             document.getElementById("importPasswordSection").classList.add("d-none");
 
-            this.showToast("Data imported successfully", "success");
+            const skippedNote = summary.skipped > 0 ? `, ${summary.skipped} invalid item(s) skipped` : "";
+            this.showToast(`Imported ${summary.accounts} account(s)${skippedNote}`, summary.skipped > 0 ? "error" : "success");
         } catch (error) {
             console.error("Error importing data:", error);
-            if (error.message.includes("Invalid password")) {
-                this.showToast("Invalid password or corrupted file", "error");
-            } else {
-                this.showToast("Error importing data. Please check file format.", "error");
-            }
+            this.showToast(error.message || "Error importing data", "error");
         }
     }
 

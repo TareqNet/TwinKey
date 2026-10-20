@@ -78,8 +78,8 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 - **Security**: PIN/password login, AES-256-GCM secrets, PBKDF2-SHA256 100k iterations, verification-token check.
 - **Accounts**: add / edit / delete, one-click copy, 30s countdown, "last used" tracking.
 - **Organization**: folders sidebar, search, sort (custom, name, service, date, last used), drag-and-drop reorder.
-- **Data**: settings modal, storage stats, JSON export/import (plain works; encrypted is broken — see Known Issues).
-- **Window**: "Open in New Window" (header + login screen) with one-shot session auto-login.
+- **Data**: settings modal, storage stats, JSON export/import v1.2 (plain or password-encrypted with KDF params in file; replace or merge; legacy v1.1 recovery).
+- **Window**: "Open in New Window" (header + login screen); login-screen button hands off auth once (`twinkey_handoff`, 10 s TTL).
 - **i18n**: English only (`locales/en.json`); `data-i18n` attributes + `window.i18n.t()`. Arabic removed 2025-08-29.
 - **Removed**: QR code scanning (content script + context menu) removed 2025-12-15.
 
@@ -91,14 +91,14 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 | # | Severity | Issue | Location |
 |---|----------|-------|----------|
-| 1 | Critical | Encrypted export/import calls `generateEncryptionKey(pw)` → `setupPasswordAuth()`, which overwrites `twinkey_salt` / `twinkey_verify_token` / `twinkey_verify_plain`. Master PIN stops working; existing secrets become undecryptable | `js/storage.js` `encryptExportData` / `decryptImportData` |
-| 2 | Critical | Encrypted import can never succeed: PBKDF2 salt is random per call and not stored in the export file | `js/crypto.js` `encrypt()` + `setupPasswordAuth()` |
+| 1 | ~~Critical~~ Fixed 2026-10-20 | Encrypted export/import overwrote vault auth keys — fixed by pure `deriveKey()` + export v1.2 | `js/storage.js` |
+| 2 | ~~Critical~~ Fixed 2026-10-20 | Export salt not stored — v1.2 stores `kdf`; v1.1 opened via vault salt candidates | `js/storage.js` |
 | 3 | Low | Popup loads Bootstrap CSS/Icons from CDN — not fully offline despite `offline_enabled: true` | `popup.html` |
 | 4 | Low | `scripting` and `activeTab` permissions unused since QR removal; `web_accessible_resources` exposes `js/*` to `<all_urls>` | `manifest.json` |
 | 5 | Low | Dead code: WebAuthn/biometric + "system auth" (`prompt()`) paths; `js/app.js`, `js/ui.js`, `css/styles.css` not loaded by `popup.html` | `js/crypto.js`, legacy files |
-| 6 | Low | `btoa(String.fromCharCode.apply(...))` may throw on large payloads (big encrypted exports) | `js/crypto.js` `encrypt()` |
+| 6 | ~~Low~~ Fixed 2026-10-20 | Large-payload `btoa` overflow — chunked `bytesToBase64()` | `js/crypto.js` |
 
-> 💡 Tip: Until #1 is fixed, use only unencrypted export.
+> 💡 Tip: Run `node tests/selftest.mjs` after any change to `js/crypto.js`, `js/storage.js` or `js/totp.js`.
 
 ---
 
@@ -108,17 +108,18 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 - `chrome.storage.local` primary, `localStorage` fallback for dev — ADR-002.
 - Container-level event delegation for drag-and-drop — ADR-003.
 - QR scanning removed (reason not recorded) — ADR-004.
+- Export key is standalone; KDF params stored in the file; vault salts archived before replacement — ADR-005.
+- Escape every template interpolation + strict CSP — ADR-006.
 → Full ADRs: `docs/architecture/decisions.md`
 
 ---
 
 ## Future Considerations
 
-1. Fix encrypted export/import (store salt in export; use a standalone key-derivation helper).
-2. Bundle Bootstrap locally for true offline mode; drop unused permissions.
-3. Remove dead WebAuthn/system-auth code and legacy web-app files.
-4. Encrypted cloud backup; companion mobile app.
-5. Performance for 1000+ accounts.
+1. Bundle Bootstrap locally for true offline mode; drop unused permissions.
+2. Remove dead WebAuthn/system-auth code and legacy web-app files.
+3. Encrypted cloud backup; companion mobile app.
+4. Performance for 1000+ accounts.
 
 ---
 
@@ -154,6 +155,7 @@ No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100�
 
 | Date | # | Type | Title | Description | File | Ticket |
 |------|---|------|-------|-------------|------|--------|
+| 20261020 | 04 | Bug | Critical Security Fixes | Export vault loss, stored XSS, CSP, fail-closed storage, import validation, listener duplication | [↗](docs/history/20261020-04-critical-security-fixes.md) | — |
 | 20261020 | 03 | Feature | Remove QR Scanning | Content script, context menu and QR parser removed — impl 2025-12-15 (retroactive) | [↗](docs/history/20261020-03-remove-qr-scanning.md) | — |
 | 20261020 | 02 | Feature | Open in New Window | Detached 1100×850 window + session auto-login — impl 2025-09-11 / 2025-12-15 (retroactive) | [↗](docs/history/20261020-02-open-in-new-window.md) | — |
 | 20261020 | 01 | Feature | Encrypted Export/Import + Icons | Password-protected export, extension icons — impl 2025-09-11; encrypted path broken (retroactive) | [↗](docs/history/20261020-01-encrypted-export-import.md) | — |

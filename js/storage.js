@@ -103,21 +103,21 @@ class StorageManager {
      */
     async addAccount(account) {
         try {
-            const accounts = await this.getAccounts();
-            
-            // Encrypt the secret if crypto is enabled
-            let secret = account.secret;
-            if (this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
-                secret = await this.cryptoManager.encrypt(account.secret);
+            // Fail closed: never persist a plaintext secret
+            if (!this.canEncrypt()) {
+                throw new Error("Not authenticated: refusing to store an unencrypted secret");
             }
-            
+
+            const accounts = await this.getAccounts();
+            const secret = await this.cryptoManager.encrypt(account.secret);
+
             const newAccount = {
                 id: account.id || this.generateId(),
                 name: account.name,
                 service: account.service,
                 email: account.email,
                 secret: secret,
-                encrypted: this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated(),
+                encrypted: true,
                 folderId: account.folderId || "uncategorized",
                 sortOrder: account.sortOrder !== undefined ? account.sortOrder : accounts.length,
                 createdAt: new Date().toISOString(),
@@ -203,12 +203,13 @@ class StorageManager {
             const account = await this.getAccount(accountId);
             if (!account) return null;
 
-            // If account is encrypted, decrypt the secret
-            if (account.encrypted && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
+            if (account.encrypted) {
+                // Locked: never hand ciphertext to the TOTP generator
+                if (!this.canEncrypt()) return null;
                 return await this.cryptoManager.decrypt(account.secret);
             }
 
-            // Return plain secret if not encrypted
+            // Legacy plaintext account (created before encryption existed)
             return account.secret;
         } catch (error) {
             console.error("Error getting decrypted secret:", error);
@@ -473,12 +474,20 @@ class StorageManager {
     // Utility Methods
     // ===============================
 
+    canEncrypt() {
+        return !!(this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated());
+    }
+
     /**
      * Generate unique ID
      * @returns {string} Unique identifier
      */
     generateId() {
-        return Date.now().toString(36) + Math.random().toString(36).substr(2);
+        return StorageManager.newId();
+    }
+
+    static newId() {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2);
     }
 
     /**
@@ -549,32 +558,40 @@ class StorageManager {
     /**
      * Export all data
      * @param {string} exportPassword - Optional password to encrypt the export
-     * @returns {Promise<Object>} Exported data
+     * @returns {Promise<{file: Object, skipped: number}|null>} Backup file and count of unreadable accounts left out
      */
     async exportData(exportPassword = null) {
         try {
-            // Get raw data with decrypted secrets for re-encryption with export password
-            const rawData = await this.getRawDataForExport();
-            
-            const exportData = {
-                accounts: rawData.accounts,
+            const { accounts, skipped } = await this.getRawDataForExport();
+            const payload = {
+                accounts: accounts,
                 folders: await this.getFolders(),
-                settings: await this.getSettings(),
+                settings: await this.getSettings()
+            };
+
+            const file = {
+                version: StorageManager.EXPORT_VERSION,
                 exportedAt: new Date().toISOString(),
-                version: "1.1",
                 encrypted: !!exportPassword
             };
 
-            // If export password provided, encrypt the data
             if (exportPassword) {
-                exportData.encryptedData = await this.encryptExportData(exportData, exportPassword);
-                // Remove the raw data, keep only encrypted version
-                delete exportData.accounts;
-                delete exportData.folders;
-                delete exportData.settings;
+                // Standalone key: the vault's auth keys are never touched
+                const salt = this.cryptoManager.generateSalt();
+                const iterations = CryptoManager.EXPORT_ITERATIONS;
+                const key = await this.cryptoManager.deriveKey(exportPassword, salt, iterations);
+                file.kdf = {
+                    name: "PBKDF2",
+                    hash: "SHA-256",
+                    iterations: iterations,
+                    salt: CryptoManager.bytesToBase64(salt)
+                };
+                file.encryptedData = await this.cryptoManager.encryptWithKey(key, JSON.stringify(payload));
+            } else {
+                Object.assign(file, payload);
             }
 
-            return exportData;
+            return { file, skipped };
         } catch (error) {
             console.error("Error exporting data:", error);
             return null;
@@ -582,136 +599,249 @@ class StorageManager {
     }
 
     /**
-     * Get raw data for export with decrypted secrets
-     * @returns {Promise<Object>} Raw data with decrypted secrets
+     * Accounts with secrets decrypted for export. Unreadable accounts are left out and counted.
+     * @returns {Promise<{accounts: Array, skipped: number}>}
      */
     async getRawDataForExport() {
-        try {
-            const accounts = await this.getAccounts();
-            const decryptedAccounts = [];
-
-            for (const account of accounts) {
-                const decryptedAccount = { ...account };
-                
-                // If account is encrypted, decrypt the secret for export
-                if (account.encrypted && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
-                    try {
-                        decryptedAccount.secret = await this.cryptoManager.decrypt(account.secret);
-                        decryptedAccount.encrypted = false; // Mark as decrypted in export
-                    } catch (error) {
-                        console.error("Failed to decrypt account secret:", error);
-                        // Keep encrypted if decryption fails
-                    }
-                }
-                
-                decryptedAccounts.push(decryptedAccount);
-            }
-
-            return {
-                accounts: decryptedAccounts
-            };
-        } catch (error) {
-            console.error("Error getting raw data for export:", error);
-            throw error;
+        if (!this.canEncrypt()) {
+            throw new Error("Not authenticated");
         }
+
+        const accounts = [];
+        let skipped = 0;
+        for (const account of await this.getAccounts()) {
+            const copy = { ...account };
+            if (account.encrypted) {
+                try {
+                    copy.secret = await this.cryptoManager.decrypt(account.secret);
+                    copy.encrypted = false;
+                } catch (error) {
+                    skipped++;
+                    continue;
+                }
+            }
+            accounts.push(copy);
+        }
+        return { accounts, skipped };
     }
 
     /**
-     * Encrypt export data with password
-     * @param {Object} data - Data to encrypt
+     * Import data from a backup file.
+     * @param {Object} file - Parsed backup JSON
+     * @param {string|null} importPassword - Password for encrypted backups
+     * @param {"replace"|"merge"} mode - Replace everything, or add/overwrite by id
+     * @returns {Promise<{accounts: number, folders: number, skipped: number}>}
+     * @throws {Error} With a user-facing message
+     */
+    async importData(file, importPassword = null, mode = "replace") {
+        if (!this.canEncrypt()) {
+            throw new Error("Unlock Twin Key before importing");
+        }
+        if (!file || typeof file !== "object" || Array.isArray(file)) {
+            throw new Error("Invalid backup file format");
+        }
+
+        let payload = file;
+        if (file.encrypted) {
+            if (typeof file.encryptedData !== "string") {
+                throw new Error("Invalid backup file format");
+            }
+            if (!importPassword) {
+                throw new Error("Password required for encrypted import");
+            }
+            payload = await this.decryptImportData(file, importPassword);
+        }
+
+        const clean = StorageManager.validateImport(payload);
+
+        const importedAccounts = [];
+        for (const account of clean.accounts) {
+            importedAccounts.push({
+                ...account,
+                secret: await this.cryptoManager.encrypt(account.secret),
+                encrypted: true
+            });
+        }
+
+        let accounts = importedAccounts;
+        let folders = clean.folders;
+        if (mode === "merge") {
+            accounts = StorageManager.mergeById(await this.getAccounts(), importedAccounts);
+            folders = StorageManager.mergeById(await this.getFolders(), clean.folders);
+        }
+
+        if (!folders.some(folder => folder.id === "uncategorized")) {
+            folders.unshift({ id: "uncategorized", name: "Uncategorized", icon: "bi-folder", parentId: null, createdAt: new Date().toISOString() });
+        }
+        const folderIds = new Set(folders.map(folder => folder.id));
+        accounts.forEach(account => {
+            if (!folderIds.has(account.folderId)) account.folderId = "uncategorized";
+        });
+
+        // Single write: accounts and folders change together or not at all
+        const update = { [this.accountsKey]: accounts, [this.foldersKey]: folders };
+        if (clean.settings && mode === "replace") {
+            update[this.settingsKey] = { ...(await this.getSettings()), ...clean.settings };
+        }
+        await this.setMany(update);
+
+        return { accounts: importedAccounts.length, folders: clean.folders.length, skipped: clean.skipped };
+    }
+
+    /**
+     * Decrypt an encrypted backup without touching the vault's auth keys.
+     * @param {Object} file - Backup file with encryptedData (and kdf for v1.2+)
      * @param {string} password - Export password
-     * @returns {Promise<string>} Encrypted data string
+     * @returns {Promise<Object>} Decrypted payload
      */
-    async encryptExportData(data, password) {
-        try {
-            // Create a temporary crypto manager for export encryption
-            const exportCrypto = new CryptoManager();
-            await exportCrypto.generateEncryptionKey(password);
-            
-            const dataToEncrypt = {
-                accounts: data.accounts,
-                folders: data.folders,
-                settings: data.settings
-            };
+    async decryptImportData(file, password) {
+        const candidates = [];
 
-            return await exportCrypto.encrypt(JSON.stringify(dataToEncrypt));
-        } catch (error) {
-            console.error("Error encrypting export data:", error);
-            throw error;
+        if (file.kdf) {
+            const kdf = file.kdf;
+            const validKdf = kdf.name === "PBKDF2" && kdf.hash === "SHA-256" &&
+                Number.isInteger(kdf.iterations) && kdf.iterations >= 1 && kdf.iterations <= 5000000 &&
+                typeof kdf.salt === "string";
+            if (!validKdf) {
+                throw new Error("Unsupported backup encryption parameters");
+            }
+            candidates.push({ salt: CryptoManager.base64ToBytes(kdf.salt), iterations: kdf.iterations });
+        } else {
+            // v1.1 backups did not store their salt. The old export code wrote that salt
+            // into twinkey_salt (bug), so the current or an archived vault salt can open it.
+            for (const salt of await this.getLegacySaltCandidates()) {
+                candidates.push({ salt, iterations: CryptoManager.LEGACY_ITERATIONS });
+            }
         }
+
+        for (const { salt, iterations } of candidates) {
+            try {
+                const key = await this.cryptoManager.deriveKey(password, salt, iterations);
+                return JSON.parse(await this.cryptoManager.decryptWithKey(key, file.encryptedData));
+            } catch (error) {
+                // Wrong password or wrong salt: try the next candidate
+            }
+        }
+        throw new Error("Invalid password or corrupted backup file");
     }
 
     /**
-     * Import data
-     * @param {Object} data - Data to import
-     * @param {string} importPassword - Password for encrypted imports
-     * @returns {Promise<boolean>} Success status
+     * Salts that may open a v1.1 backup: the current vault salt plus archived ones.
+     * @returns {Promise<Uint8Array[]>}
      */
-    async importData(data, importPassword = null) {
-        try {
-            let importData = data;
+    async getLegacySaltCandidates() {
+        const salts = [];
+        const current = await this.cryptoManager.getStoredSalt();
+        if (current) salts.push(current);
 
-            // If data is encrypted, decrypt it first
-            if (data.encrypted && data.encryptedData) {
-                if (!importPassword) {
-                    throw new Error("Password required for encrypted import");
-                }
-                
-                importData = await this.decryptImportData(data.encryptedData, importPassword);
-            }
-
-            if (importData.accounts) {
-                // If crypto is enabled, encrypt the secrets during import
-                if (this.isEncryptionEnabled && this.cryptoManager && this.cryptoManager.isAuthenticated()) {
-                    const encryptedAccounts = await Promise.all(
-                        importData.accounts.map(async (account) => {
-                            if (!account.encrypted && account.secret) {
-                                // Encrypt the secret with current user's password
-                                const encryptedSecret = await this.cryptoManager.encrypt(account.secret);
-                                return {
-                                    ...account,
-                                    secret: encryptedSecret,
-                                    encrypted: true
-                                };
-                            }
-                            return account;
-                        })
-                    );
-                    await this.saveAccounts(encryptedAccounts);
-                } else {
-                    await this.saveAccounts(importData.accounts);
-                }
-            }
-            if (importData.folders) {
-                await this.saveFolders(importData.folders);
-            }
-            if (importData.settings) {
-                await this.saveSettings(importData.settings);
-            }
-            return true;
-        } catch (error) {
-            console.error("Error importing data:", error);
-            return false;
-        }
+        const archive = this.isExtension
+            ? (await chrome.storage.local.get("twinkey_salt_archive")).twinkey_salt_archive
+            : JSON.parse(localStorage.getItem("twinkey_salt_archive") || "[]");
+        (Array.isArray(archive) ? archive : []).forEach(saltStr => salts.push(CryptoManager.saltFromString(saltStr)));
+        return salts;
     }
 
     /**
-     * Decrypt import data with password
-     * @param {string} encryptedData - Encrypted data string
-     * @param {string} password - Import password
-     * @returns {Promise<Object>} Decrypted data
+     * Validate and normalize a decrypted backup payload. Only whitelisted fields survive.
+     * @param {Object} payload - {accounts, folders, settings}
+     * @returns {{accounts: Array, folders: Array, settings: Object|null, skipped: number}}
+     * @throws {Error} When the payload has no usable structure
      */
-    async decryptImportData(encryptedData, password) {
-        try {
-            // Create a temporary crypto manager for import decryption
-            const importCrypto = new CryptoManager();
-            await importCrypto.generateEncryptionKey(password);
-            
-            const decryptedString = await importCrypto.decrypt(encryptedData);
-            return JSON.parse(decryptedString);
-        } catch (error) {
-            console.error("Error decrypting import data:", error);
-            throw new Error("Invalid password or corrupted data");
+    static validateImport(payload) {
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+            throw new Error("Invalid backup file format");
+        }
+        const hasAccounts = Array.isArray(payload.accounts);
+        const hasFolders = Array.isArray(payload.folders);
+        if (!hasAccounts && !hasFolders) {
+            throw new Error("Invalid backup file format: no accounts or folders found");
+        }
+
+        const text = (value, max) => typeof value === "string" ? value.trim().slice(0, max) : "";
+        const dateOrNull = value => typeof value === "string" && !isNaN(Date.parse(value)) ? value : null;
+        const validId = value => typeof value === "string" && StorageManager.ID_PATTERN.test(value);
+        const now = new Date().toISOString();
+        let skipped = 0;
+
+        const folders = [];
+        const folderIds = new Set();
+        for (const folder of hasFolders ? payload.folders : []) {
+            const name = folder && typeof folder === "object" ? text(folder.name, 100) : "";
+            if (!name) { skipped++; continue; }
+            let id = validId(folder.id) ? folder.id : StorageManager.newId();
+            if (folderIds.has(id)) { skipped++; continue; }
+            folderIds.add(id);
+            folders.push({
+                id: id,
+                name: name,
+                icon: StorageManager.FOLDER_ICONS.includes(folder.icon) ? folder.icon : "bi-folder",
+                parentId: null,
+                createdAt: dateOrNull(folder.createdAt) || now
+            });
+        }
+
+        const accounts = [];
+        const accountIds = new Set();
+        for (const account of hasAccounts ? payload.accounts : []) {
+            if (!account || typeof account !== "object") { skipped++; continue; }
+            const name = text(account.name, 200);
+            const secret = typeof account.secret === "string" ? account.secret.replace(/\s/g, "").toUpperCase() : "";
+            // Secrets encrypted by another vault cannot be read: only Base32 plaintext is accepted
+            if (!name || account.encrypted || !StorageManager.BASE32_PATTERN.test(secret)) { skipped++; continue; }
+            let id = validId(account.id) ? account.id : StorageManager.newId();
+            if (accountIds.has(id)) id = StorageManager.newId();
+            accountIds.add(id);
+            accounts.push({
+                id: id,
+                name: name,
+                service: text(account.service, 100) || "Other",
+                email: text(account.email, 254),
+                secret: secret,
+                folderId: validId(account.folderId) ? account.folderId : "uncategorized",
+                sortOrder: Number.isFinite(account.sortOrder) ? account.sortOrder : accounts.length,
+                createdAt: dateOrNull(account.createdAt) || now,
+                updatedAt: now,
+                lastUsed: dateOrNull(account.lastUsed)
+            });
+        }
+
+        let settings = null;
+        const source = payload.settings;
+        if (source && typeof source === "object" && !Array.isArray(source)) {
+            settings = {};
+            if (["auto", "light", "dark"].includes(source.theme)) settings.theme = source.theme;
+            if (typeof source.showEmails === "boolean") settings.showEmails = source.showEmails;
+            if (!Object.keys(settings).length) settings = null;
+        }
+
+        return { accounts, folders, settings, skipped };
+    }
+
+    /**
+     * Merge two lists by id: incoming items replace existing ones with the same id.
+     */
+    static mergeById(existing, incoming) {
+        const merged = existing.map(item => ({ ...item }));
+        for (const item of incoming) {
+            const index = merged.findIndex(current => current.id === item.id);
+            if (index === -1) {
+                merged.push(item);
+            } else {
+                merged[index] = item;
+            }
+        }
+        return merged;
+    }
+
+    /**
+     * Write several keys in one storage call.
+     * @param {Object} items - key → value
+     */
+    async setMany(items) {
+        if (this.isExtension) {
+            await chrome.storage.local.set(items);
+        } else {
+            Object.entries(items).forEach(([key, value]) => localStorage.setItem(key, JSON.stringify(value)));
         }
     }
 
@@ -732,3 +862,8 @@ class StorageManager {
         }
     }
 }
+
+StorageManager.EXPORT_VERSION = "1.2";
+StorageManager.ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+StorageManager.BASE32_PATTERN = /^[A-Z2-7]{16,}=*$/;
+StorageManager.FOLDER_ICONS = ["bi-folder", "bi-briefcase", "bi-house", "bi-shield-lock", "bi-code-slash", "bi-credit-card", "bi-people", "bi-cloud"];
