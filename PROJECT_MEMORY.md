@@ -1,161 +1,167 @@
-# Twin Key OTP Manager - Project Documentation Index
+---
+title: "PROJECT_MEMORY — Twin Key"
+scope: memory
+topics: [identity, stack, architecture, ai-behavior, history, security]
+note: "Hard limit: 200 content lines or 25KB. YAML is excluded from this count."
+last_updated: "2026-10-20"
+---
 
-## Project Overview
-A secure Chrome extension for managing TOTP (Time-based One-Time Password) authentication codes with advanced encryption and user-friendly interface.
+# PROJECT_MEMORY — Twin Key
 
-**Developer**: Tareq Nassry <tareq@tareq.website>  
-**Repository**: https://github.com/TareqNet/TwinKey  
-**License**: MIT
+> Status: Active
+> Version: 1.0.0 (manifest)
+> Ticket Board: N/A
+> Last Updated: 2026-10-20
 
-## Documentation Structure
+---
 
-### Core Documentation
-- **CLAUDE.md** - Quick reference for development guidance (points to this file)
-- **PROJECT_MEMORY.md** - This file (complete project documentation and architecture)
+## Project Identity
 
-### Historical Development Timeline
+| Field | Value |
+|-------|-------|
+| Name | Twin Key (TwinKey OTP Manager) |
+| Concept | Chrome extension (Manifest V3) that stores TOTP secrets encrypted and shows live 2FA codes |
+| Goal | Local-only, encrypted alternative to phone authenticator apps, inside the browser |
+| Users | Individuals managing 2FA accounts on desktop Chrome |
+| Developer | Tareq Nassry <tareq@tareq.website> |
+| Repository | https://github.com/TareqNet/TwinKey — MIT license |
 
-**Detailed chronological documentation available in:** `docs/history/`
+**Inputs**: Master PIN/password, account data (name, service, email, Base32 secret), JSON import files.
+**Outputs**: 6-digit TOTP codes (RFC 6238, 30s), clipboard copy, JSON export files (plain or "encrypted").
 
-**Development Phases Summary:**
-- **Phase 0** (2024-08-26): Project foundation and initial setup
-- **Phase 1** (2024-08-01): Language conversion and file reorganization  
-- **Phase 2** (2024-08-05): UI/UX improvements and folder system
-- **Phase 3** (2024-08-10): Drag & drop implementation
-- **Phase 4** (2024-08-15): Layout optimization (600px → 850px)
-- **Phase 5** (2024-08-18): Settings modal and data management
-- **Phase 6** (2024-08-20): Security implementation and encryption
-- **Phase 7** (2024-08-25): Storage system unification
+---
 
-Each phase is documented in detail with technical decisions, implementation steps, challenges faced, and lessons learned.
+## Interaction Layer
 
-### Developer Resources
-- **[docs/history/template.md](docs/history/template.md)** - Template for historical change documentation
+No API, no backend. UI is the extension popup (`popup.html`) or a detached 1100×850 popup window.
+→ Components and data flow: `docs/architecture/overview.md`
 
-## Current Architecture Overview
+**Data flow**: PIN → PBKDF2 key → decrypt secret from `chrome.storage.local` → `TOTPGenerator` → code in UI.
 
-### Security Layer
-```
-User PIN/Password → PBKDF2 (100k iterations) → AES-256-GCM → Encrypted Secrets
-                     ↓
-              Verification Token System
-```
+---
 
-### Core Components
-1. **CryptoManager** (`js/crypto.js`) - Encryption & authentication system
-2. **StorageManager** (`js/storage.js`) - Chrome storage with encryption integration  
-3. **PopupManager** (`js/popup.js`) - Main application controller & authentication
-4. **TOTPGenerator** (`js/totp.js`) - RFC 6238 compliant TOTP implementation
+## Programming Approach
 
-### File Structure
-```
-otp-ui/
-├── manifest.json           # Chrome Extension Manifest V3
-├── popup.html             # Main popup interface (850px width)
-├── css/popup.css          # Extension-optimized styling
-├── js/
-│   ├── crypto.js          # Encryption & authentication system
-│   ├── storage.js         # Chrome storage with encryption
-│   ├── popup.js           # Main popup controller
-│   ├── totp.js            # RFC 6238 TOTP implementation
-│   ├── bootstrap-minimal.js # Custom Bootstrap components
-│   ├── i18n.js            # Internationalization framework
-│   └── background.js      # Extension background script
-├── docs/
-│   └── history/           # Historical development documentation
-│       ├── template.md    # Template for new change documentation
-│       └── [YYYY-MM-DD]_phase[N]_[name].md # Individual phase docs
-├── PROJECT_MEMORY.md      # Complete project documentation
-└── CLAUDE.md             # Development guidance reference
-```
+| Field | Value |
+|-------|-------|
+| Language(s) | Vanilla JavaScript (ES2020+), HTML5, CSS3 |
+| Platform | Chrome Extension Manifest V3, `minimum_chrome_version` 88 |
+| Pattern | Class-per-concern managers (`CryptoManager`, `StorageManager`, `PopupManager`, `TOTPGenerator`) |
+| Package Manager | None — no build step, no npm dependencies |
+| UI libraries | Bootstrap 5.3.0 CSS + Bootstrap Icons 1.11.0 via jsdelivr CDN; `js/bootstrap-minimal.js` for Modal/Toast/Dropdown JS |
 
-## Key Technical Decisions
+**Structure**: Root holds `manifest.json`, `popup.html`; `js/` managers + service worker; `css/popup.css`; `locales/en.json`; `icons/`.
+→ Full diagram: `docs/architecture/overview.md`
 
-### Authentication Architecture
-- **Method**: PIN/Password with verification token system
-- **Rationale**: Balances security with usability within Chrome extension limitations
-- **Security**: AES-256-GCM encryption, PBKDF2 key derivation, no password storage
+---
 
-### Storage Strategy  
-- **Primary**: chrome.storage.local (secure, extension-isolated)
-- **Fallback**: localStorage (development environments only)
-- **Rationale**: Maximum security with development flexibility
+## Environment & Infrastructure
 
-### UI/UX Patterns
-- **Drag & Drop**: Container-based event delegation with visual feedback
-- **Layout**: 850px popup width for optimal visibility
-- **Organization**: Folder system with sidebar navigation
+| Env | URL / Host | Notes |
+|-----|-----------|-------|
+| Production | Not published to Chrome Web Store | Users install via "Load unpacked" |
+| Staging | N/A | No staging environment |
+| Development | `chrome://extensions` → Load unpacked → repo root | `localStorage` fallback when `chrome.storage` is absent |
 
-## Development Workflow
+→ Full infra details: `docs/architecture/infrastructure.md`
 
-### Adding New Features
-1. Read relevant historical documentation for context
-2. Use `docs/history/template.md` for documenting the change
-3. Follow established patterns in core components
-4. Test authentication flow and data persistence
-5. Document the change chronologically in `docs/history/`
+### Install & First Use
+1. Clone `https://github.com/TareqNet/TwinKey`.
+2. Open `chrome://extensions/`, enable Developer mode, click "Load unpacked", select the repo root.
+3. Pin the extension. Set a PIN/password on first open — all secrets are encrypted with it.
+4. Click "+" to add an account; click a code to copy it; use folders and drag-and-drop to organize.
 
-### Documentation Standards
-- **Historical Changes**: Use template in `docs/history/template.md`
-- **Features**: Update feature sections in this file with new capabilities  
-- **Architecture**: Update this file for structural changes
-- **User Guides**: Update installation/usage sections in this file as needed
+---
+
+## Features (Current)
+
+- **Security**: PIN/password login, AES-256-GCM secrets, PBKDF2-SHA256 100k iterations, verification-token check.
+- **Accounts**: add / edit / delete, one-click copy, 30s countdown, "last used" tracking.
+- **Organization**: folders sidebar, search, sort (custom, name, service, date, last used), drag-and-drop reorder.
+- **Data**: settings modal, storage stats, JSON export/import (plain works; encrypted is broken — see Known Issues).
+- **Window**: "Open in New Window" (header + login screen) with one-shot session auto-login.
+- **i18n**: English only (`locales/en.json`); `data-i18n` attributes + `window.i18n.t()`. Arabic removed 2025-08-29.
+- **Removed**: QR code scanning (content script + context menu) removed 2025-12-15.
+
+---
+
+## Known Issues
+
+> ⚠️ Found by code inspection on 2026-10-20 — not runtime-tested.
+
+| # | Severity | Issue | Location |
+|---|----------|-------|----------|
+| 1 | Critical | Encrypted export/import calls `generateEncryptionKey(pw)` → `setupPasswordAuth()`, which overwrites `twinkey_salt` / `twinkey_verify_token` / `twinkey_verify_plain`. Master PIN stops working; existing secrets become undecryptable | `js/storage.js` `encryptExportData` / `decryptImportData` |
+| 2 | Critical | Encrypted import can never succeed: PBKDF2 salt is random per call and not stored in the export file | `js/crypto.js` `encrypt()` + `setupPasswordAuth()` |
+| 3 | Low | Popup loads Bootstrap CSS/Icons from CDN — not fully offline despite `offline_enabled: true` | `popup.html` |
+| 4 | Low | `scripting` and `activeTab` permissions unused since QR removal; `web_accessible_resources` exposes `js/*` to `<all_urls>` | `manifest.json` |
+| 5 | Low | Dead code: WebAuthn/biometric + "system auth" (`prompt()`) paths; `js/app.js`, `js/ui.js`, `css/styles.css` not loaded by `popup.html` | `js/crypto.js`, legacy files |
+| 6 | Low | `btoa(String.fromCharCode.apply(...))` may throw on large payloads (big encrypted exports) | `js/crypto.js` `encrypt()` |
+
+> 💡 Tip: Until #1 is fixed, use only unencrypted export.
+
+---
+
+## Key Decisions (summary)
+
+- PIN/password + verification token over WebAuthn (unavailable in extension context) — ADR-001.
+- `chrome.storage.local` primary, `localStorage` fallback for dev — ADR-002.
+- Container-level event delegation for drag-and-drop — ADR-003.
+- QR scanning removed (reason not recorded) — ADR-004.
+→ Full ADRs: `docs/architecture/decisions.md`
+
+---
 
 ## Future Considerations
 
-1. **Biometric Support**: Investigate alternative APIs for Chrome extensions
-2. **Cloud Sync**: Encrypted cloud backup functionality  
-3. **Mobile App**: Companion mobile application
-4. **Advanced Features**: QR code scanning, bulk operations
-5. **Performance**: Optimize for 1000+ accounts
+1. Fix encrypted export/import (store salt in export; use a standalone key-derivation helper).
+2. Bundle Bootstrap locally for true offline mode; drop unused permissions.
+3. Remove dead WebAuthn/system-auth code and legacy web-app files.
+4. Encrypted cloud backup; companion mobile app.
+5. Performance for 1000+ accounts.
 
 ---
 
-# Key Features Overview
+## AI Behavior
 
-## Core Capabilities
-- **🔐 Security**: AES-256-GCM encryption, PIN/password authentication, local-only storage
-- **🎨 Interface**: 850px popup, Bootstrap components, drag & drop reordering
-- **📁 Organization**: Folders, search, multiple sorting options
-- **⚙️ Management**: Add/edit/delete accounts, import/export, settings modal
-- **🌐 Internationalization**: English/Arabic support with RTL layout
-- **🔄 TOTP**: RFC 6238 compliant, 30-second refresh, one-click copy
+> Behavior contract for all AI assistants. CLAUDE.md, GEMINI.md, and all agent config files defer to this section.
 
----
+**Session start**: Read this file completely. Do not touch code without reading PROJECT_MEMORY first.
+**Load on demand**: `docs/architecture/` for structural work · `docs/history/` only when understanding a past decision. No `docs/api/` — project has no API.
+**Never edit**: `docs/history/` files — append only.
+**After structural changes**: update the affected section in this file + the relevant `docs/architecture/` file.
+**Security**: never store plaintext secrets or the master password; test login after any `CryptoManager` change.
 
-# Installation & Usage
+### Git Rules
+- Branch from `main` always. No exceptions.
+- Naming: `feature/{slug}` · `fix/{slug}` · `hotfix/{slug}`
+- Flow: `feature/{slug}` → merge into `staging` (test) → merge `feature/{slug}` into `main` → sync `staging ← main`
+- `staging` is a test environment — **never merge staging into main**.
+- `hotfix`: branch from `main` → fix → merge into `main` → sync `staging ← main`.
 
-## Quick Setup
-1. Clone: `git clone https://github.com/TareqNet/TwinKey`
-2. Open Chrome → `chrome://extensions/` → Enable Developer mode
-3. Click "Load unpacked" → Select `otp-ui` directory
-4. Pin extension to toolbar for easy access
-
-## First Use
-1. Set up PIN/password (all secrets will be encrypted)
-2. Click "+" to add account (name, service, email, secret key)
-3. Copy OTP codes with one click, organize with folders
+### Documentation Rules
+- Run `/zdoc` at end of any session with code changes.
+- Filename: `yyyymmdd-nn-slug.md` — date is creation date, never changes.
+- Same feature = append Phase, never create a new file.
+- `docs/history/template.md` and the `YYYY-MM-DD_phaseN_*.md` files are legacy format — superseded by `/zdoc`; keep, do not extend.
 
 ---
 
-# Internationalization
+## History Index
 
-## Languages
-- **English** (en) - Default
-- **Arabic** (ar) - RTL support
+> Newest first. Load individual files only when needed.
+> Legacy files (Phases 0–7) carry 2024 dates in their names/bodies; git shows the work happened 2025-08-27 → 2025-08-30. For legacy rows the Date column uses git dates.
 
-## Implementation
-- Files: `locales/en.json`, `locales/ar.json`
-- HTML: `data-i18n="key"` attributes
-- JavaScript: `window.i18n.t('key')`  
-- RTL: Automatic Bootstrap CSS switching
-
----
-
-# Development Template
-
-Use `docs/history/template.md` for new feature documentation.
-
----
-**Last Updated**: 2024-09-03  
-**Status**: Active Development
+| Date | # | Type | Title | Description | File | Ticket |
+|------|---|------|-------|-------------|------|--------|
+| 20261020 | 03 | Feature | Remove QR Scanning | Content script, context menu and QR parser removed — impl 2025-12-15 (retroactive) | [↗](docs/history/20261020-03-remove-qr-scanning.md) | — |
+| 20261020 | 02 | Feature | Open in New Window | Detached 1100×850 window + session auto-login — impl 2025-09-11 / 2025-12-15 (retroactive) | [↗](docs/history/20261020-02-open-in-new-window.md) | — |
+| 20261020 | 01 | Feature | Encrypted Export/Import + Icons | Password-protected export, extension icons — impl 2025-09-11; encrypted path broken (retroactive) | [↗](docs/history/20261020-01-encrypted-export-import.md) | — |
+| 20250830 | — | Feature | Phase 7 — Storage Unification | All storage on `chrome.storage.local` with dev fallback (legacy) | [↗](docs/history/2024-08-25_phase7_storage_unification.md) | — |
+| 20250829 | — | Feature | Phase 6 — Security & Encryption | PIN + verification token, AES-256-GCM; WebAuthn abandoned (legacy) | [↗](docs/history/2024-08-20_phase6_security_encryption.md) | — |
+| 20250829 | — | Feature | Phase 5 — Settings & Data Management | Settings modal, JSON export/import, storage stats (legacy) | [↗](docs/history/2024-08-18_phase5_settings_data_management.md) | — |
+| 20250829 | — | Feature | Phase 4 — Layout Optimization | Popup width 600 → 850px, compact cards (legacy) | [↗](docs/history/2024-08-15_phase4_layout_optimization.md) | — |
+| 20250829 | — | Feature | Phase 3 — Drag & Drop | Delegated drag-and-drop with drop zones (legacy) | [↗](docs/history/2024-08-10_phase3_drag_and_drop.md) | — |
+| 20250828 | — | Feature | Phase 2 — UI Improvements | Dropdown account menu, folders, sorting (legacy) | [↗](docs/history/2024-08-05_phase2_ui_improvements.md) | — |
+| 20250829 | — | Refactor | Phase 1 — Language Conversion | Arabic → English, `background.js` moved to `js/` (legacy) | [↗](docs/history/2024-08-01_phase1_language_conversion.md) | — |
+| 20250827 | — | Feature | Phase 0 — Initial Setup | Web-app foundation, later converted to extension (legacy) | [↗](docs/history/2024-08-26_phase0_initial_project_setup.md) | — |

@@ -1,3 +1,15 @@
+---
+title: "Phase 5 — Settings & Data Management — Legacy Documentation"
+scope: history
+type: feature
+status: Completed
+topics: [settings, legacy, export-import]
+note: "Legacy pre-zdoc format. Dates in filename/body (2024) are inaccurate — git shows implementation around 2025-08-29."
+load_when: understanding how this phase was built, debugging related behavior
+skip_when: unrelated features or fixes
+last_updated: 2026-10-20
+---
+
 # Feature/Change History Template
 
 ## Request Title: Settings Modal and Data Export/Import Implementation
