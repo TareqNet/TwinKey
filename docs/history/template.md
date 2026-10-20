@@ -1,3 +1,12 @@
+---
+title: "Legacy History Template"
+scope: history
+type: feature
+status: Archived
+note: "Superseded by /zdoc templates. Kept for reference — do not use for new entries."
+last_updated: 2026-10-20
+---
+
 # Feature/Change History Template
 
 ## Request Title: [Brief the title of the request]

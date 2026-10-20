@@ -1,3 +1,15 @@
+---
+title: "Phase 7 — Storage Unification — Legacy Documentation"
+scope: history
+type: feature
+status: Completed
+topics: [storage, legacy]
+note: "Legacy pre-zdoc format. Dates in filename/body (2024) are inaccurate — git shows implementation around 2025-08-30."
+load_when: understanding how this phase was built, debugging related behavior
+skip_when: unrelated features or fixes
+last_updated: 2026-10-20
+---
+
 # Feature/Change History Template
 
 ## Request Title: Storage System Unification and Optimization
